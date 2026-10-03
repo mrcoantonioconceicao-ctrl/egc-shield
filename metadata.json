@@ -1,0 +1,8 @@
+{
+  "name": "EGC Copilot & Remediation Command Center",
+  "description": "Centro de comando e engenharia cirúrgica para o Enterprise GraphRAG Context: rastreamento dos 108 achados (Fase 13 a 0), decisões D1 a D32, analisador AST, gerador de PR atômica e diário de bordo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
