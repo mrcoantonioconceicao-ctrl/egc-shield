@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, User, GitPullRequest, CheckCircle2, AlertTriangle, Layers, Activity, GitBranch } from 'lucide-react';
+import { ShieldCheck, User, GitPullRequest, CheckCircle2, AlertTriangle, Layers, Activity, GitBranch, Wrench } from 'lucide-react';
 import { Finding } from '../types/egc';
 
 interface HeaderProps {
@@ -26,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   const tabs = [
     { id: 'matrix', label: 'Matriz dos 108 Achados', icon: Layers, badge: `${resolvidos}/${total}` },
     { id: 'github', label: 'GitHub Scanner (PAT)', icon: GitBranch },
+    { id: 'build', label: 'Build & Vercel Fixes', icon: Wrench },
     { id: 'ast', label: 'Análise AST & Diffs', icon: Activity },
     { id: 'pr', label: 'Gerador de PR Atômica', icon: GitPullRequest },
     { id: 'gate', label: 'Portão Local & CI Gate', icon: ShieldCheck },

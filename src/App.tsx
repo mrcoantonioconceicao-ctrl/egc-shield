@@ -9,6 +9,7 @@ import { PrGenerator } from './components/PrGenerator';
 import { LocalGateChecklist } from './components/LocalGateChecklist';
 import { DecisionsReference } from './components/DecisionsReference';
 import { EngineeringDiary } from './components/EngineeringDiary';
+import { BuildConflictSolver } from './components/BuildConflictSolver';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('matrix');
@@ -157,6 +158,15 @@ export default function App() {
           <GitHubScanner
             onLoadFileToAst={handleLoadFileToAst}
             findings={findings}
+          />
+        )}
+
+        {activeTab === 'build' && (
+          <BuildConflictSolver
+            onSendToDiary={handleAddDiaryEntry}
+            onSendToPr={(code) => {
+              setActiveTab('pr');
+            }}
           />
         )}
 
