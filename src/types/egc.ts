@@ -12,6 +12,7 @@ export interface Finding {
   phase: PhaseNumber;
   phaseName: string;
   targetFile: string;
+  testFile?: string; // GraphRAG Context: Arquivo de teste correspondente na árvore
   isHeavyDebt?: boolean; // e.g. C44 - single file per PR rule
   decisionRef?: string; // e.g. "D12", "D1"
   severity: FindingSeverity;

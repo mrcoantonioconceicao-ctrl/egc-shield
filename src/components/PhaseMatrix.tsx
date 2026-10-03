@@ -14,9 +14,11 @@ import {
   ChevronDown, 
   ChevronRight,
   Upload,
-  Plus,
-  Trash2
+  Layers,
+  SlidersHorizontal,
+  ChevronLeft
 } from 'lucide-react';
+import { SidebarDrawer } from './SidebarDrawer';
 
 interface PhaseMatrixProps {
   findings: Finding[];
@@ -34,10 +36,8 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
   onSelectForPr,
   onInspectAst,
   onImportFindings,
-  onAddSingleFinding,
-  onClearAll,
 }) => {
-  const [selectedPhase, setSelectedPhase] = useState<PhaseNumber | 'all'>('all');
+  const [selectedPhase, setSelectedPhase] = useState<PhaseNumber | 'all'>(13);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [severityFilter, setSeverityFilter] = useState<string>('all');
@@ -45,6 +45,9 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
   const [showImporter, setShowImporter] = useState<boolean>(false);
   const [importText, setImportText] = useState<string>('');
   const [importError, setImportError] = useState<string | null>(null);
+
+  // Phase Navigation Drawer State (Mobile-First)
+  const [isPhaseDrawerOpen, setIsPhaseDrawerOpen] = useState(false);
 
   const [expandedPhases, setExpandedPhases] = useState<Record<number, boolean>>({
     13: true,
@@ -70,24 +73,11 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
     }));
   };
 
-  const expandAll = () => {
-    const allExp: Record<number, boolean> = {};
-    PHASES_CONFIG.forEach(p => { allExp[p.number] = true; });
-    setExpandedPhases(allExp);
-  };
-
-  const collapseAll = () => {
-    const allCol: Record<number, boolean> = {};
-    PHASES_CONFIG.forEach(p => { allCol[p.number] = false; });
-    setExpandedPhases(allCol);
-  };
-
   const handleProcessImport = () => {
     setImportError(null);
     if (!importText.trim()) return;
 
     try {
-      // 1. Try parsing JSON format
       if (importText.trim().startsWith('[') || importText.trim().startsWith('{')) {
         const parsed = JSON.parse(importText);
         const list: any[] = Array.isArray(parsed) ? parsed : [parsed];
@@ -112,8 +102,6 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
         return;
       }
 
-      // 2. Try parsing line-by-line text / markdown list
-      // e.g.: "F13-01 | .eslintrc.cjs | Configuração sem AST | D11 | critico"
       const lines = importText.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
       const parsedFindings: Finding[] = lines.map((line, idx) => {
         const parts = line.split('|').map(p => p.trim());
@@ -123,7 +111,6 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
         const decision = parts[3] || 'D1';
         const sev = (parts[4] || 'alto') as any;
 
-        // Try extracting phase number from code e.g. F13-01 -> 13
         let phaseNum: PhaseNumber = 13;
         const phaseMatch = code.match(/F(\d+)/i);
         if (phaseMatch) {
@@ -218,56 +205,124 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
     }
   };
 
+  const currentPhaseMeta = selectedPhase !== 'all' ? PHASES_CONFIG.find(p => p.number === selectedPhase) : null;
+
   return (
-    <div className="space-y-6">
-      {/* Banner & Real Inventory Importer */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 font-mono text-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-              <span className="font-bold text-zinc-100 uppercase tracking-wide">
-                Inventário Real de Achados EGC ({findings.length} Carregados)
-              </span>
-            </div>
-            <p className="text-zinc-400">
-              Zero dados fictícios. Importe o inventário real dos 108 achados extraídos da auditoria do EGC.
-            </p>
-          </div>
+    <div className="space-y-5 font-mono text-xs">
+      {/* Top Action Bar with Phase Drawer Trigger (Diretriz 4) */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+        <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowImporter(!showImporter)}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded flex items-center gap-1.5 transition text-xs"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Importar Achados Reais</span>
-            </button>
-            <button
-              onClick={expandAll}
-              className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 transition"
-            >
-              Expandir Fases
-            </button>
-            <button
-              onClick={collapseAll}
-              className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 transition"
-            >
-              Recolher
-            </button>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+            <span className="font-bold text-zinc-100 uppercase tracking-wide">
+              {currentPhaseMeta ? currentPhaseMeta.title : 'Todas as Fases (13 a 0)'}
+            </span>
           </div>
+          <p className="text-zinc-400 text-xs">
+            {currentPhaseMeta ? currentPhaseMeta.scope : 'Matriz dos 108 achados auditados no EGC.'}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Gaveta Lateral de Fases (Sidebar Drawer Trigger) */}
+          <button
+            onClick={() => setIsPhaseDrawerOpen(true)}
+            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded flex items-center gap-2 transition text-xs shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+          >
+            <Layers className="w-4 h-4 fill-zinc-950" />
+            <span>Navegador de Fases (Gaveta Lateral)</span>
+          </button>
+
+          <button
+            onClick={() => setShowImporter(!showImporter)}
+            className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded flex items-center gap-1.5 transition text-xs"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Importar Inventário</span>
+          </button>
         </div>
       </div>
 
-      {/* Importer Drawer / Form */}
+      {/* GAVETA LATERAL DESLIZANTE DE NAVEGAÇÃO DE FASES (DIRETRIZ 4) */}
+      <SidebarDrawer
+        isOpen={isPhaseDrawerOpen}
+        onClose={() => setIsPhaseDrawerOpen(false)}
+        title="Navegador de Fases EGC (13 a 0)"
+        subtitle="Execução estrita bottom-up sem deslocar campos de trabalho da tela principal"
+        position="right"
+        widthClass="max-w-md"
+      >
+        <div className="space-y-3 font-mono text-xs">
+          <div className="flex items-center justify-between pb-2 border-b border-zinc-800 text-[11px] text-zinc-400">
+            <span>Selecione a fase para carregar no fluxo:</span>
+            <button
+              onClick={() => {
+                setSelectedPhase('all');
+                setIsPhaseDrawerOpen(false);
+              }}
+              className="text-emerald-400 hover:underline"
+            >
+              Exibir Todas
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {PHASES_CONFIG.map((p) => {
+              const count = findings.filter(f => f.phase === p.number).length;
+              const hasHeavy = findings.some(f => f.phase === p.number && f.isHeavyDebt);
+              const isSelected = selectedPhase === p.number;
+
+              return (
+                <div
+                  key={p.number}
+                  onClick={() => {
+                    setSelectedPhase(p.number);
+                    setIsPhaseDrawerOpen(false);
+                  }}
+                  className={`p-3 rounded-lg border cursor-pointer transition flex flex-col gap-1.5 ${
+                    isSelected
+                      ? 'bg-zinc-800/90 border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.15)]'
+                      : 'bg-zinc-900/60 border-zinc-800 hover:bg-zinc-800/50 hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-zinc-100 text-xs">
+                      {p.title}
+                    </span>
+                    <span className="text-[10px] text-zinc-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">
+                      {count} {count === 1 ? 'achado' : 'achados'}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-zinc-400 leading-normal">
+                    {p.scope}
+                  </p>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-zinc-950 text-zinc-400 border border-zinc-800">
+                      {p.criticality}
+                    </span>
+                    {hasHeavy && (
+                      <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-rose-950/60 text-rose-300 border border-rose-800 font-bold">
+                        Contém C44 (1 arq/PR)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </SidebarDrawer>
+
+      {/* Importer Modal / Drawer if opened */}
       {showImporter && (
-        <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-5 space-y-4 font-mono text-xs">
+        <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-5 space-y-4 shadow-xl">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-            <div className="flex items-center gap-2">
+            <h3 className="font-bold text-zinc-100 text-sm flex items-center gap-2">
               <Upload className="w-4 h-4 text-emerald-400" />
-              <h3 className="font-bold text-zinc-100 text-sm">
-                Importação do Plano Real de 108 Achados (JSON ou Lista)
-              </h3>
-            </div>
+              <span>Importar Inventário dos 108 Achados (JSON ou Lista)</span>
+            </h3>
             <button
               onClick={() => setShowImporter(false)}
               className="text-zinc-400 hover:text-zinc-200"
@@ -276,16 +331,16 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
             </button>
           </div>
 
-          <p className="text-zinc-400">
-            Cole abaixo o JSON do seu relatório de auditoria EGC ou a lista de achados no formato: <br />
-            <code className="text-emerald-400">CODIGO | ARQUIVO_ALVO | TITULO_ACHADO | DECISAO | SEVERIDADE</code> (ex: <code className="text-zinc-300">F13-01 | .eslintrc.cjs | Tipagem AST estrita | D11 | critico</code>)
+          <p className="text-zinc-400 text-xs">
+            Formato aceito: JSON ou linhas delimitadas por barra vertical: <br />
+            <code className="text-emerald-400">CODIGO | ARQUIVO_ALVO | TITULO | DECISAO | SEVERIDADE</code>
           </p>
 
           <textarea
-            rows={8}
+            rows={7}
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
-            placeholder="Cole o array JSON ou as linhas de achados reais aqui..."
+            placeholder="Cole aqui o inventário real de achados..."
             className="w-full bg-zinc-950 border border-zinc-700 rounded p-3 text-zinc-200 font-mono text-xs focus:border-emerald-500"
           />
 
@@ -298,13 +353,13 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
           <div className="flex justify-end gap-2">
             <button
               onClick={() => setShowImporter(false)}
-              className="px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded"
+              className="px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded text-xs"
             >
               Cancelar
             </button>
             <button
               onClick={handleProcessImport}
-              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded"
+              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded text-xs"
             >
               Carregar Inventário Real
             </button>
@@ -312,7 +367,7 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
         </div>
       )}
 
-      {/* Control Bar: Search & Filters */}
+      {/* Filter and Search Bar */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-3 font-mono text-xs">
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
@@ -321,7 +376,7 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por código real (ex: C44), arquivo alvo, termo ou decisão..."
+              placeholder="Buscar por código (ex: C44), arquivo alvo, termo ou decisão..."
               className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-700 rounded text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
             />
           </div>
@@ -329,22 +384,6 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 text-zinc-400">
               <Filter className="w-3.5 h-3.5" />
-              <span>Fase:</span>
-              <select
-                value={selectedPhase}
-                onChange={(e) => setSelectedPhase(e.target.value === 'all' ? 'all' : Number(e.target.value) as PhaseNumber)}
-                className="bg-zinc-950 border border-zinc-700 text-zinc-200 rounded px-2 py-1 text-xs"
-              >
-                <option value="all">Todas as 14 Fases</option>
-                {PHASES_CONFIG.map((p) => (
-                  <option key={p.number} value={p.number}>
-                    Fase {p.number}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center gap-1.5 text-zinc-400">
               <span>Status:</span>
               <select
                 value={statusFilter}
@@ -374,11 +413,13 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
         </div>
       </div>
 
-      {/* Reverse Phases List (Bottom-Up: 13 to 0) */}
+      {/* Findings List for the Selected Phase */}
       <div className="space-y-4">
         {PHASES_CONFIG.map((phaseMeta) => {
           const phaseFindings = findingsByPhase.get(phaseMeta.number) || [];
-          const isExpanded = expandedPhases[phaseMeta.number] ?? false;
+          if (phaseFindings.length === 0 && selectedPhase !== 'all') return null;
+
+          const isExpanded = expandedPhases[phaseMeta.number] ?? true;
           const hasHeavyDebt = phaseFindings.some(f => f.isHeavyDebt);
 
           return (
@@ -422,7 +463,7 @@ export const PhaseMatrix: React.FC<PhaseMatrixProps> = ({
                 <div className="divide-y divide-zinc-800 bg-zinc-950/40">
                   {phaseFindings.length === 0 ? (
                     <div className="p-4 text-center text-xs font-mono text-zinc-500">
-                      Nenhum achado cadastrado nesta fase ainda. Utilize o botão "Importar Achados Reais" acima.
+                      Nenhum achado nesta fase atende aos filtros atuais.
                     </div>
                   ) : (
                     phaseFindings.map((finding) => (

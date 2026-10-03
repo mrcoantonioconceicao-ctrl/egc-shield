@@ -39,10 +39,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   const tabs = [
     { id: 'matrix', label: 'Matriz dos 108 Achados', icon: Layers, badge: `${resolvidos}/${total}` },
-    { id: 'github', label: 'GitHub Scanner (PAT)', icon: GitBranch },
-    { id: 'build', label: 'Build & Vercel Fixes', icon: Wrench },
     { id: 'ast', label: 'Análise AST & Diffs', icon: Activity },
     { id: 'pr', label: 'Gerador de PR Atômica', icon: GitPullRequest },
+    { id: 'build', label: 'Build & Vercel Fixes', icon: Wrench },
     { id: 'gate', label: 'Portão Local & CI Gate', icon: ShieldCheck },
     { id: 'decisions', label: 'Decisões D1-D32', icon: AlertTriangle, badge: '32' },
     { id: 'diary', label: 'Diário de Bordo', icon: CheckCircle2 },

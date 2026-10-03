@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Finding, FindingStatus, DiaryEntry } from './types/egc';
+import { Finding, FindingStatus, DiaryEntry, PhaseNumber } from './types/egc';
 import { INITIAL_FINDINGS, INITIAL_DIARY } from './data/initialData';
 import { Header } from './components/Header';
+import { PermanentGitHubBar } from './components/PermanentGitHubBar';
+import { PhaseDrawer } from './components/PhaseDrawer';
 import { PhaseMatrix } from './components/PhaseMatrix';
-import { GitHubScanner } from './components/GitHubScanner';
 import { AstDiffAnalyzer } from './components/AstDiffAnalyzer';
 import { PrGenerator } from './components/PrGenerator';
 import { LocalGateChecklist } from './components/LocalGateChecklist';
@@ -13,9 +14,12 @@ import { BuildConflictSolver } from './components/BuildConflictSolver';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('matrix');
-  const [phaseFilter, setPhaseFilter] = useState<number | 'all'>('all');
+  const [phaseFilter, setPhaseFilter] = useState<PhaseNumber | 'all'>(13);
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [astBufferOverride, setAstBufferOverride] = useState<string | null>(null);
+
+  // State to control Phase Drawer (Sidebar Drawer)
+  const [isPhaseDrawerOpen, setIsPhaseDrawerOpen] = useState(false);
 
   // Real findings state with localStorage persistence - NO FAKE DATA
   const [findings, setFindings] = useState<Finding[]>(() => {
@@ -90,8 +94,7 @@ export default function App() {
     setFindings([]);
   };
 
-  const handleLoadFileToAst = (filePath: string, content: string, findingCode?: string) => {
-    // Check if finding matches
+  const handleFileLoadedFromGitHub = (filePath: string, content: string, findingCode?: string) => {
     const matched = findings.find(f => f.targetFile === filePath || f.code === findingCode);
     if (matched) {
       setSelectedFinding(matched);
@@ -100,7 +103,7 @@ export default function App() {
         id: findingCode || 'ACH-LIVE',
         code: findingCode || 'AUDIT-LIVE',
         title: `Inspeção de ${filePath.split('/').pop()}`,
-        description: `Arquivo extraído via GitHub PAT: ${filePath}`,
+        description: `Arquivo extraído diretamente do GitHub: ${filePath}`,
         phase: 13,
         phaseName: 'Fase 13',
         targetFile: filePath,
@@ -133,15 +136,51 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
+      {/* Header com Navegação e Telemetria */}
       <Header
         findings={findings}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         currentPhaseFilter={phaseFilter}
-        setCurrentPhaseFilter={setPhaseFilter}
+        setCurrentPhaseFilter={(p) => setPhaseFilter(p as PhaseNumber | 'all')}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5">
+        {/* 1. BLOCO DO TOKEN GITHUB: PERMANENTEMENTE FIXO E VISÍVEL NO TOPO (DIRETRIZ 1 E 2) */}
+        <PermanentGitHubBar
+          findings={findings}
+          onOpenPhaseDrawer={() => setIsPhaseDrawerOpen(true)}
+          currentPhase={phaseFilter}
+          onScanComplete={(updatedFindings, logMessage) => {
+            setFindings(updatedFindings);
+            handleAddDiaryEntry({
+              phase: 13,
+              targetFile: 'Repositório EGC (Tree Global)',
+              findingId: 'VARREDURA-GLOBAL',
+              actionTaken: 'Varredura global automatizada disparada via token clássico do GitHub.',
+              astAnalysisSummary: logMessage,
+              ciGateProof: 'EXIT_CODE 0 - Árvore de arquivos mapeada e achados sincronizados da Fase 13 até a Fase 0.',
+              prLinkOrRef: 'Scan Automático do Repositório',
+            });
+          }}
+          onSelectFindingForWork={(finding, content) => {
+            setSelectedFinding(finding);
+            setAstBufferOverride(content);
+            setActiveTab('ast');
+          }}
+        />
+
+        {/* 2. GAVETA LATERAL DE NAVEGAÇÃO DE FASES 13 A 0 (DIRETRIZ 2) */}
+        <PhaseDrawer
+          isOpen={isPhaseDrawerOpen}
+          onClose={() => setIsPhaseDrawerOpen(false)}
+          selectedPhase={phaseFilter}
+          onSelectPhase={(phase) => setPhaseFilter(phase)}
+          findings={findings}
+        />
+
+        {/* 3. ÁREA DE TRABALHO CIRÚRGICA BASEADA NA ABA ATIVA */}
         {activeTab === 'matrix' && (
           <PhaseMatrix
             findings={findings}
@@ -151,22 +190,6 @@ export default function App() {
             onImportFindings={handleImportFindings}
             onAddSingleFinding={handleAddSingleFinding}
             onClearAll={handleClearAllFindings}
-          />
-        )}
-
-        {activeTab === 'github' && (
-          <GitHubScanner
-            onLoadFileToAst={handleLoadFileToAst}
-            findings={findings}
-          />
-        )}
-
-        {activeTab === 'build' && (
-          <BuildConflictSolver
-            onSendToDiary={handleAddDiaryEntry}
-            onSendToPr={(code) => {
-              setActiveTab('pr');
-            }}
           />
         )}
 
@@ -191,6 +214,15 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'build' && (
+          <BuildConflictSolver
+            onSendToDiary={handleAddDiaryEntry}
+            onSendToPr={(code) => {
+              setActiveTab('pr');
+            }}
+          />
+        )}
+
         {activeTab === 'gate' && (
           <LocalGateChecklist />
         )}
@@ -207,6 +239,7 @@ export default function App() {
         )}
       </main>
 
+      {/* Footer */}
       <footer className="bg-zinc-950 border-t border-zinc-800/80 py-4 font-mono text-[11px] text-zinc-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -215,7 +248,7 @@ export default function App() {
             <span>Autor Exclusivo: Marco Antônio Conceição</span>
           </div>
           <div>
-            <span>Conexão GitHub PAT • Análise Real de AST • Bottom-Up (Fase 13 &rarr; Fase 0)</span>
+            <span>Token Clássico Fixo no Topo • Fases em Gaveta Lateral • Bottom-Up (Fase 13 &rarr; Fase 0)</span>
           </div>
         </div>
       </footer>
