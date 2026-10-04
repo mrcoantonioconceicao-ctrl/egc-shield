@@ -16,6 +16,11 @@ import {
 import { Finding } from '../types/egc';
 import { CiRunnerMonitor } from './CiRunnerMonitor';
 import { safeFetchJson } from '../utils/apiClient';
+import { 
+  validateGitHubTokenFormat, 
+  executeWithAuthInterception, 
+  clearGitHubAuthError 
+} from '../utils/githubAuth';
 
 interface PermanentGitHubBarProps {
   findings: Finding[];
@@ -62,19 +67,11 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
   }, [owner, repo, branch, token]);
 
   const testConnection = async () => {
-    const cleanToken = token.trim();
-    if (!cleanToken) {
+    const validation = validateGitHubTokenFormat(token);
+    if (!validation.isValid) {
       setConnectionStatus({
         connected: false,
-        message: 'Token clássico do GitHub (PAT) ausente. Forneça o token com os escopos "repo" e "workflow".',
-      });
-      return;
-    }
-
-    if (/\s/.test(cleanToken)) {
-      setConnectionStatus({
-        connected: false,
-        message: 'O token fornecido contém espaços ou quebras de linha inválidas. Remova os espaços.',
+        message: validation.error || 'Token do GitHub inválido.',
       });
       return;
     }
@@ -83,15 +80,19 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
     setConnectionStatus(null);
     try {
       const headers: Record<string, string> = {
-        'x-github-token': cleanToken,
+        'x-github-token': validation.token,
       };
 
-      const data = await safeFetchJson<any>(
-        `/api/github/status?owner=${encodeURIComponent(owner.trim())}&repo=${encodeURIComponent(repo.trim())}`,
-        { headers }
+      const data = await executeWithAuthInterception(
+        () => safeFetchJson<any>(
+          `/api/github/status?owner=${encodeURIComponent(owner.trim())}&repo=${encodeURIComponent(repo.trim())}`,
+          { headers }
+        ),
+        { endpointName: '/api/github/status', token: validation.token }
       );
       
       if (data.connected) {
+        clearGitHubAuthError();
         setConnectionStatus({
           connected: true,
           repoName: data.repoName,
@@ -122,26 +123,35 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
       return;
     }
 
+    const validation = validateGitHubTokenFormat(token);
+    if (!validation.isValid) {
+      alert(`Token inválido: ${validation.error}`);
+      return;
+    }
+
     setIsScanning(true);
     setScanSummary(null);
 
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        'x-github-token': validation.token,
       };
-      if (token) headers['x-github-token'] = token;
 
-      // Chama a análise profunda dinâmica no backend via safeFetchJson
-      const data = await safeFetchJson<any>('/api/github/deep-scan', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          owner: owner.trim(),
-          repo: repo.trim(),
-          branch: branch.trim() || 'main',
-          limit: 50,
+      // Chama a análise profunda dinâmica no backend via executeWithAuthInterception
+      const data = await executeWithAuthInterception(
+        () => safeFetchJson<any>('/api/github/deep-scan', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            owner: owner.trim(),
+            repo: repo.trim(),
+            branch: branch.trim() || 'main',
+            limit: 50,
+          }),
         }),
-      });
+        { endpointName: '/api/github/deep-scan', token: validation.token }
+      );
 
       const anomalies: Finding[] = (data.anomalies || []).map((item: any, idx: number) => ({
         id: item.id || `DYN-${String(idx + 1).padStart(3, '0')}`,

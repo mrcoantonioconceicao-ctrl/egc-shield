@@ -9,7 +9,8 @@ import {
   Activity, 
   GitBranch, 
   Wrench,
-  Menu
+  Menu,
+  Cpu
 } from 'lucide-react';
 import { Finding } from '../types/egc';
 import { SidebarDrawer } from './SidebarDrawer';
@@ -44,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const tabs = [
     { id: 'matrix', label: 'Matriz dos 108 Achados', icon: Layers, badge: `${resolvidos}/${total}` },
+    { id: 'autonomous', label: 'Orquestrador Autônomo', icon: Cpu, badge: 'AUTO' },
     { id: 'ast', label: 'Análise AST & Diffs', icon: Activity },
     { id: 'pr', label: 'Gerador de PR Atômica', icon: GitPullRequest },
     { id: 'build', label: 'Build & Vercel Fixes', icon: Wrench },

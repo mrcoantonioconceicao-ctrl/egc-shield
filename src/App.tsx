@@ -11,6 +11,8 @@ import { LocalGateChecklist } from './components/LocalGateChecklist';
 import { DecisionsReference } from './components/DecisionsReference';
 import { EngineeringDiary } from './components/EngineeringDiary';
 import { BuildConflictSolver } from './components/BuildConflictSolver';
+import { GitHubAuthAlert } from './components/GitHubAuthAlert';
+import { AutonomousOrchestrator } from './components/AutonomousOrchestrator';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('matrix');
@@ -145,6 +147,9 @@ export default function App() {
         setCurrentPhaseFilter={(p) => setPhaseFilter(p as PhaseNumber | 'all')}
       />
 
+      {/* Interceptor e Alerta Global de Autenticação GitHub (Bad credentials) */}
+      <GitHubAuthAlert />
+
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5">
         {/* 1. BLOCO DO TOKEN GITHUB: PERMANENTEMENTE FIXO E VISÍVEL NO TOPO (DIRETRIZ 1 E 2) */}
@@ -190,6 +195,19 @@ export default function App() {
             onImportFindings={handleImportFindings}
             onAddSingleFinding={handleAddSingleFinding}
             onClearAll={handleClearAllFindings}
+          />
+        )}
+
+        {activeTab === 'autonomous' && (
+          <AutonomousOrchestrator
+            onSendToDiary={handleAddDiaryEntry}
+            onSelectFindingForWork={(code) => {
+              const matched = findings.find(f => f.code === code);
+              if (matched) {
+                setSelectedFinding(matched);
+                setActiveTab('pr');
+              }
+            }}
           />
         )}
 
