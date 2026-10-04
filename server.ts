@@ -8,17 +8,29 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
-  const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+export const app = express();
+const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(express.json());
+app.use(express.json());
 
-  // Garante que todas as respostas da API sejam estritamente JSON
-  app.use('/api', (_req, res, next) => {
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    next();
-  });
+// CORS e preflight OPTIONS para eliminar 405 Method Not Allowed
+app.use((req: Request, res: Response, next) => {
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, x-github-token');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+
+// Garante que todas as respostas da API sejam estritamente JSON
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
 
   // Helper for GitHub Authorization
   const getGitHubHeaders = (req: Request) => {
@@ -793,6 +805,7 @@ async function startServer() {
     });
   });
 
+async function startServer() {
   // Mounting Vite middleware or static files
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.resolve(__dirname, 'dist')));
@@ -813,4 +826,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
