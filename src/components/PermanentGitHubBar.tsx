@@ -14,6 +14,8 @@ import {
   ArrowDownCircle
 } from 'lucide-react';
 import { Finding } from '../types/egc';
+import { CiRunnerMonitor } from './CiRunnerMonitor';
+import { safeFetchJson } from '../utils/apiClient';
 
 interface PermanentGitHubBarProps {
   findings: Finding[];
@@ -66,10 +68,12 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
       const headers: Record<string, string> = {};
       if (token) headers['x-github-token'] = token;
 
-      const res = await fetch(`/api/github/status?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`, { headers });
-      const data = await res.json();
+      const data = await safeFetchJson<any>(
+        `/api/github/status?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
+        { headers }
+      );
       
-      if (res.ok && data.connected) {
+      if (data.connected) {
         setConnectionStatus({
           connected: true,
           repoName: data.repoName,
@@ -86,7 +90,7 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
     } catch (err: any) {
       setConnectionStatus({
         connected: false,
-        message: `Erro de rede: ${err.message}`,
+        message: `Erro de conexão: ${err.message}`,
       });
     } finally {
       setIsConnecting(false);
@@ -109,8 +113,8 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
       };
       if (token) headers['x-github-token'] = token;
 
-      // Chama a análise profunda dinâmica no backend
-      const res = await fetch('/api/github/deep-scan', {
+      // Chama a análise profunda dinâmica no backend via safeFetchJson
+      const data = await safeFetchJson<any>('/api/github/deep-scan', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -120,12 +124,6 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
           limit: 50,
         }),
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Falha ao processar varredura dinâmica no repositório.');
-      }
 
       const anomalies: Finding[] = (data.anomalies || []).map((item: any, idx: number) => ({
         id: item.id || `DYN-${String(idx + 1).padStart(3, '0')}`,
@@ -166,12 +164,12 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
         const c44Target = anomalies.find(f => f.code === 'C44' || f.isHeavyDebt) || anomalies[0];
         if (c44Target) {
           try {
-            const fileRes = await fetch(`/api/github/file?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&path=${encodeURIComponent(c44Target.targetFile)}&ref=${encodeURIComponent(branch)}`, { headers });
-            if (fileRes.ok) {
-              const fileData = await fileRes.json();
-              if (fileData.content) {
-                onSelectFindingForWork(c44Target, fileData.content);
-              }
+            const fileData = await safeFetchJson<any>(
+              `/api/github/file?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&path=${encodeURIComponent(c44Target.targetFile)}&ref=${encodeURIComponent(branch)}`,
+              { headers }
+            );
+            if (fileData.content) {
+              onSelectFindingForWork(c44Target, fileData.content);
             }
           } catch {
             // ignore auto-fetch error
@@ -206,6 +204,9 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Traffic Light Indicator (System Green / Build Warning / Runner Blocked) */}
+          <CiRunnerMonitor owner={owner} repo={repo} token={token} />
+
           {connectionStatus?.connected ? (
             <span className="px-2.5 py-1 rounded bg-emerald-950/70 border border-emerald-700 text-emerald-400 font-bold flex items-center gap-1.5 text-xs">
               <CheckCircle2 className="w-3.5 h-3.5" /> Conectado ({connectionStatus.repoName})

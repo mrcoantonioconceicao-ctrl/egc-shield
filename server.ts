@@ -14,6 +14,12 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Garante que todas as respostas da API sejam estritamente JSON
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    next();
+  });
+
   // Helper for GitHub Authorization
   const getGitHubHeaders = (req: Request) => {
     const token = (req.headers['x-github-token'] as string) || process.env.GITHUB_CLASSIC_TOKEN || '';
@@ -494,6 +500,297 @@ async function startServer() {
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
+  });
+
+  // 5. GitHub Actions: CI-Runner Health Status Endpoint
+  app.get('/api/github/actions/runs', async (req: Request, res: Response) => {
+    try {
+      const owner = (req.query.owner as string) || process.env.GITHUB_REPO_OWNER;
+      const repo = (req.query.repo as string) || process.env.GITHUB_REPO_NAME;
+
+      if (!owner || !repo) {
+        return res.status(400).json({ error: 'owner e repo são obrigatórios' });
+      }
+
+      const headers = getGitHubHeaders(req);
+      const runsRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=5`, { headers });
+
+      if (!runsRes.ok) {
+        const errJson = await runsRes.json().catch(() => ({}));
+        return res.status(runsRes.status).json({
+          error: `Falha ao consultar GitHub Actions runs: ${errJson.message || runsRes.statusText}`
+        });
+      }
+
+      const runsData = await runsRes.json();
+      const runs = (runsData.workflow_runs || []).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        head_branch: r.head_branch,
+        head_sha: r.head_sha?.slice(0, 7),
+        status: r.status, // completed, in_progress, queued
+        conclusion: r.conclusion, // success, failure, cancelled, null
+        html_url: r.html_url,
+        run_number: r.run_number,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      }));
+
+      const latestRun = runs[0] || null;
+      let healthStatus: 'healthy' | 'running' | 'failing' | 'unknown' = 'unknown';
+      let trafficLight: 'system_green' | 'build_warning' | 'runner_blocked' = 'system_green';
+      let trafficLightLabel: 'System Green' | 'Build Warning' | 'Runner Blocked' = 'System Green';
+      let statusDetails = 'Todas as execuções recentes concluídas com sucesso. Esteira livre.';
+
+      if (latestRun) {
+        if (latestRun.status === 'in_progress' || latestRun.status === 'queued') {
+          healthStatus = 'running';
+          trafficLight = 'build_warning';
+          trafficLightLabel = 'Build Warning';
+          statusDetails = `Run #${latestRun.run_number} (${latestRun.name}) em execução ou na fila do runner.`;
+        } else if (latestRun.conclusion === 'success') {
+          healthStatus = 'healthy';
+          trafficLight = 'system_green';
+          trafficLightLabel = 'System Green';
+          statusDetails = `Run #${latestRun.run_number} (${latestRun.name}) concluída com 100% de sucesso.`;
+        } else if (latestRun.conclusion === 'failure' || latestRun.conclusion === 'timed_out' || latestRun.conclusion === 'cancelled') {
+          healthStatus = 'failing';
+          trafficLight = 'runner_blocked';
+          trafficLightLabel = 'Runner Blocked';
+          statusDetails = `Falha na Run #${latestRun.run_number} (${latestRun.name}). Esteira bloqueada para novos commits.`;
+        }
+      }
+
+      return res.status(200).json({
+        trafficLight,
+        trafficLightLabel,
+        healthStatus,
+        statusDetails,
+        totalRuns: runsData.total_count || 0,
+        latestRun,
+        runs,
+        lastPolledAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 6. GitHub Actions: Workflow Inspector (CI-Aware Generation)
+  app.get('/api/github/actions/workflows', async (req: Request, res: Response) => {
+    try {
+      const owner = (req.query.owner as string) || process.env.GITHUB_REPO_OWNER;
+      const repo = (req.query.repo as string) || process.env.GITHUB_REPO_NAME;
+      const branch = (req.query.branch as string) || 'main';
+
+      if (!owner || !repo) {
+        return res.status(400).json({ error: 'owner e repo são obrigatórios' });
+      }
+
+      const headers = getGitHubHeaders(req);
+      const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, { headers });
+      if (!treeRes.ok) {
+        return res.status(treeRes.status).json({ error: 'Falha ao buscar árvore de arquivos.' });
+      }
+
+      const treeData = await treeRes.json();
+      const workflowFiles = (treeData.tree || []).filter((item: any) => 
+        item.type === 'blob' && item.path.startsWith('.github/workflows/') && (item.path.endsWith('.yml') || item.path.endsWith('.yaml'))
+      );
+
+      const parsedWorkflows: any[] = [];
+      for (const wf of workflowFiles) {
+        try {
+          const fileRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${wf.path}?ref=${branch}`, { headers });
+          if (!fileRes.ok) continue;
+          const fileJson = await fileRes.json();
+          if (!fileJson.content) continue;
+          const content = Buffer.from(fileJson.content, 'base64').toString('utf-8');
+
+          // Extract basic CI-runner specifications
+          const nodeVersions = content.match(/node-version:\s*(\[[^\]]+\]|['"]?[0-9x.]+['"]?)/i)?.[1] || null;
+          const pythonVersions = content.match(/python-version:\s*(\[[^\]]+\]|['"]?[0-9x.]+['"]?)/i)?.[1] || null;
+          const goVersions = content.match(/go-version:\s*(\[[^\]]+\]|['"]?[0-9x.]+['"]?)/i)?.[1] || null;
+          const runsOn = content.match(/runs-on:\s*([^\n\r]+)/i)?.[1]?.trim() || 'ubuntu-latest';
+          
+          const commands: string[] = [];
+          if (content.includes('npm test')) commands.push('npm test');
+          if (content.includes('npm run lint') || content.includes('eslint')) commands.push('npm run lint');
+          if (content.includes('cargo test')) commands.push('cargo test');
+          if (content.includes('pytest')) commands.push('pytest');
+          if (content.includes('go test')) commands.push('go test ./...');
+
+          parsedWorkflows.push({
+            path: wf.path,
+            runsOn,
+            runtimes: {
+              node: nodeVersions,
+              python: pythonVersions,
+              go: goVersions,
+            },
+            commands,
+            contentSnippet: content.slice(0, 500)
+          });
+        } catch {
+          // ignore single workflow error
+        }
+      }
+
+      return res.status(200).json({
+        totalWorkflows: parsedWorkflows.length,
+        workflows: parsedWorkflows,
+        summary: `Inspeção de CI concluída: ${parsedWorkflows.length} workflows do GitHub Actions analisados.`
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 7. One-Click Real Pull Request & Atomic Commit via GitHub API
+  app.post('/api/github/pr/create', async (req: Request, res: Response) => {
+    try {
+      const {
+        owner,
+        repo,
+        baseBranch = 'main',
+        branchName,
+        commitMessage,
+        filePath,
+        fileContent,
+        prTitle,
+        prBody,
+      } = req.body;
+
+      if (!owner || !repo || !branchName || !filePath || !fileContent || !prTitle) {
+        return res.status(400).json({ error: 'owner, repo, branchName, filePath, fileContent e prTitle são obrigatórios' });
+      }
+
+      const headers = getGitHubHeaders(req);
+
+      // 1. Get base branch ref SHA
+      const baseRefRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${baseBranch}`, { headers });
+      if (!baseRefRes.ok) {
+        const errJson = await baseRefRes.json().catch(() => ({}));
+        return res.status(baseRefRes.status).json({
+          error: `Base branch '${baseBranch}' não encontrada: ${errJson.message || baseRefRes.statusText}`
+        });
+      }
+      const baseRefData = await baseRefRes.json();
+      const baseSha = baseRefData.object.sha;
+
+      // 2. Create new branch if it doesn't exist
+      const createBranchRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ref: `refs/heads/${branchName}`,
+          sha: baseSha,
+        }),
+      });
+
+      // Ignore 422 if branch already exists
+      if (!createBranchRes.ok && createBranchRes.status !== 422) {
+        const errJson = await createBranchRes.json().catch(() => ({}));
+        return res.status(createBranchRes.status).json({
+          error: `Falha ao criar branch '${branchName}': ${errJson.message || createBranchRes.statusText}`
+        });
+      }
+
+      // 3. Get existing file SHA if updating
+      let existingFileSha: string | undefined;
+      const getFileRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branchName}`, { headers });
+      if (getFileRes.ok) {
+        const fileJson = await getFileRes.json();
+        existingFileSha = fileJson.sha;
+      }
+
+      // 4. Commit updated file with pure human authorship (Marco Antonio Conceicao)
+      const commitRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          message: commitMessage || `fix(surgical): remediate debt in ${filePath}`,
+          content: Buffer.from(fileContent).toString('base64'),
+          branch: branchName,
+          sha: existingFileSha,
+          author: {
+            name: 'Marco Antonio Conceicao',
+            email: 'mrcoantonioconceicao@gmail.com',
+          },
+          committer: {
+            name: 'Marco Antonio Conceicao',
+            email: 'mrcoantonioconceicao@gmail.com',
+          },
+        }),
+      });
+
+      if (!commitRes.ok) {
+        const errJson = await commitRes.json().catch(() => ({}));
+        return res.status(commitRes.status).json({
+          error: `Falha ao realizar commit no arquivo ${filePath}: ${errJson.message || commitRes.statusText}`
+        });
+      }
+
+      // 5. Open Pull Request on GitHub
+      const prRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          title: prTitle,
+          body: prBody,
+          head: branchName,
+          base: baseBranch,
+        }),
+      });
+
+      if (!prRes.ok) {
+        const errJson = await prRes.json().catch(() => ({}));
+        // If PR already exists, try to get existing PR
+        if (prRes.status === 422 && errJson.message?.includes('A pull request already exists')) {
+          return res.status(200).json({
+            success: true,
+            alreadyExisted: true,
+            branch: branchName,
+            message: `Branch ${branchName} atualizada com o commit cirúrgico. Já existe uma PR aberta para esta branch.`
+          });
+        }
+        return res.status(prRes.status).json({
+          error: `Falha ao criar Pull Request: ${errJson.message || prRes.statusText}`
+        });
+      }
+
+      const prData = await prRes.json();
+      return res.status(201).json({
+        success: true,
+        prUrl: prData.html_url,
+        prNumber: prData.number,
+        branch: branchName,
+        message: `Pull Request #${prData.number} criada com sucesso no GitHub!`
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Tratamento infalível de rotas de API inexistentes (retorna sempre JSON, nunca HTML)
+  app.all('/api/*', (_req: Request, res: Response) => {
+    res.status(404).json({
+      success: false,
+      error: 'Endpoint de API não encontrado no servidor EGC.',
+      code: 'API_ENDPOINT_NOT_FOUND',
+      statusCode: 404
+    });
+  });
+
+  // Middleware global de tratamento de erros para garantir sempre resposta JSON estruturada
+  app.use((err: any, _req: Request, res: Response, _next: any) => {
+    console.error('Erro interceptado no pipeline Express:', err);
+    res.status(err.status || 500).json({
+      success: false,
+      error: err.message || 'Erro interno no servidor EGC.',
+      code: 'INTERNAL_SERVER_ERROR',
+      statusCode: err.status || 500
+    });
   });
 
   // Mounting Vite middleware or static files

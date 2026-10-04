@@ -1,6 +1,6 @@
 # Enterprise GraphRAG Context (EGC)
 
-Centro de comando e motor de engenharia cirúrgica para execução do plano de remediação, atualização de ferramentas, análise dinâmica poliglota e refatoração arquitetural de código.
+Centro de comando e motor universal de engenharia cirúrgica para análise semântica de código, compreensão de intenção arquitetural (GraphRAG + AST), monitoramento de saúde do GitHub Actions e despacho atômico de Pull Requests.
 
 ## Autor Exclusivo
 - Marco Antônio Conceição (mrcoantonioconceicao@gmail.com)
@@ -38,36 +38,60 @@ O plano opera rigorosamente de baixo para cima, garantindo estabilidade de infra
 
 ---
 
-## Arquitetura de Interface Mobile-First
+## Monitor de Saúde do CI-Runner (CiRunnerMonitor - Traffic Light)
 
-1. **Bloco do Token GitHub Fixo no Topo**:
-   - Card de conexão (`PermanentGitHubBar`) posicionado permanentemente no topo da tela principal, logo abaixo do cabeçalho.
-   - Visível e acessível em 100% do tempo em qualquer aba, com inputs diretos para:
-     - Proprietário (User/Org)
-     - Repositório EGC
-     - Branch
-     - Token Clássico GitHub (PAT) com alternador de visibilidade (Eye/EyeOff)
-   - Botões globais de ação imediata: "Testar Conexão" e "Iniciar Varredura Dinâmica e Remediação (Fase 13 -> 0)".
-   - Sem campos manuais redundantes de busca de arquivos.
+Localizado no cabeçalho superior e diretamente ao lado da barra do token do GitHub (`CiRunnerMonitor`), este componente integra-se com a Status API e Actions API do GitHub para consultar a saúde das execuções recentes de workflow via polling automático (a cada 20 segundos):
 
-2. **Navegador de Fases em Gaveta Lateral (`PhaseDrawer`)**:
-   - Menu completo das 14 fases isolado em gaveta deslizante lateral acionada pelo botão "Fases 13 -> 0 (Gaveta)".
-   - Libera 100% da área de trabalho no celular e desktop para análise de código, diffs e geração de PRs.
+- **Indicador Estilo Semáforo (Traffic Light)**:
+  - **`System Green`**: Lente verde acesa com brilho ativo. Todas as execuções recentes foram concluídas com sucesso (`PASS`). Esteira 100% liberada e segura para novos commits.
+  - **`Build Warning`**: Lente âmbar/amarela pulsante acesa. Execução de workflow em andamento (`in_progress`) ou na fila (`queued`). Alerta preventivo para aguardar a conclusão antes de comitar para evitar concorrência no runner.
+  - **`Runner Blocked`**: Lente vermelha pulsante acesa. Falha detectada na última execução (`failure`, `timed_out` ou `cancelled`). Esteira bloqueada para novos commits até a remediação da quebra.
+- **Histórico e Detalhes**: Popover com o status detalhado, última checagem de polling, lista das últimas 5 runs com commit SHA, branch e link direto para o log no GitHub Actions.
+- **Botão de Atualização Manual**: Permite consultar o estado do runner instantaneamente sob demanda.
 
 ---
 
-## Motor de Varredura Dinâmica Poliglota (/api/github/deep-scan)
+## Inspetor de Compatibilidade de CI (.github/workflows/)
 
-O sistema opera de forma agnóstica e dinâmica sobre os arquivos reais do repositório, sem depender de inventários estáticos:
+Antes de propor alterações ou gerar remediações, o sistema aciona o endpoint `/api/github/actions/workflows` para ler os arquivos de workflow do GitHub Actions:
 
-- **Varredura Direta na Árvore**: Extração via API do GitHub (`git/trees/{branch}?recursive=1`) de todos os arquivos de código e configuração.
-- **Análise Poliglota**:
-  - TypeScript / JS: Complexidade ciclomática (> 8), God functions (> 80 linhas), blocos catch vazios, tipo any (D18), console.log (D25).
-  - Python: Exceções silenciadas (`except: pass`), ausência de tipagem estrita.
-  - Rust: Chamadas inseguras a `.unwrap()` sem propagação formal via `?`.
-  - Solidity: Chamadas `.call` de baixo nível sem validação estrita de retorno `require(success)`.
-  - Manifestos: Conflitos de dependências peer no Vercel (esbuild/vite) e segredos expostos.
-- **Mapeamento Automático Bottom-Up**: As anomalias detectadas são categorizadas automaticamente da Fase 13 até a Fase 0, prontas para remediação isolada.
+- Extração das versões de runtime do runner (Node, Python, Go, Rust, Java).
+- Mapeamento dos comandos de teste e linter (`npm test`, `npm run lint`, `cargo test`, `pytest`, `go test ./...`).
+- Alinhamento da sintaxe gerada ao ambiente exato da esteira para garantir taxa de aprovação de 100% na primeira tentativa.
+
+---
+
+## Despacho de Pull Requests em Um Clique (One-Click Real PR)
+
+O gerador de Pull Requests (`PrGenerator`) integra-se diretamente à API do GitHub (`/api/github/pr/create`):
+
+1. **Criação de Branch Isolada**: Gera automaticamente uma branch efêmera (ex: `fix/surgical-c44-1234`) a partir da branch base.
+2. **Commit Atômico com Autoria Exclusiva**: Grava a alteração cirúrgica de arquivo único com autor e committer definidos exclusivamente como `Marco Antonio Conceicao <mrcoantonioconceicao@gmail.com>`.
+3. **Abertura Oficial da PR**: Abre a Pull Request no repositório com título Conventional Commits e corpo detalhado em inglês técnico (Summary, Changes, Proof ancorado no grafo de testes e Compliance Checklist).
+4. **Link Imediato**: Retorna o link oficial da PR no GitHub diretamente na interface.
+
+---
+
+## Resiliência de Respostas HTTP/JSON no Vercel
+
+Eliminação definitiva do erro `Unexpected token 'T', is not valid JSON`:
+
+- **Front-end (`safeFetchJson`)**: O cliente HTTP inspeciona o cabeçalho `content-type` antes de qualquer chamada a `.json()`. Caso o servidor retorne HTML de erro (páginas 404/500 do Vercel ou CDN), o corpo é capturado via `response.text()` e transformado em um erro técnico legível, impedindo o congelamento da interface.
+- **Back-end Serverless (`server.ts` & `vercel.json`)**:
+  - Middleware forçando `Content-Type: application/json; charset=utf-8` em todas as rotas `/api/*`.
+  - Tratamento 404 estrito retornando objeto JSON padronizado para qualquer rota não mapeada.
+  - Middleware global de exceção garantindo formato `{ success: false, error: err.message, statusCode: 500 }`.
+
+---
+
+## Módulos Integrados Codecov & CodeRabbit
+
+- **Validação de Cobertura Delta Codecov (`codecovValidator.ts`)**:
+  - Exigência determinística de **100.00% de cobertura de delta** nos arquivos alterados.
+  - Tabela formatada gerada automaticamente no corpo da Pull Request vinculada à suíte de testes unitários real.
+- **Auditoria Pré-Merge CodeRabbit (`codeRabbitReviewer.ts`)**:
+  - Varredura de integridade garantindo que rotinas funcionais nunca sejam esvaziadas ou substituídas por stubs/placeholders vazios (`TODO`, `pass`, `catch {}` vazios).
+  - Avaliação de risco de fusão classificada como `LOW` para aprovação imediata em bots de revisão de código.
 
 ---
 
@@ -115,14 +139,14 @@ Concise and imperative explanation of the architectural remediation.
 
 ## Proof
 \`\`\`text
-PASS src/path/to/file.test.ts
-EXIT_CODE 0 - All unit test assertions and AST checks green.
+PASS tests/unit/pipelineCore.test.ts (100% delta coverage)
+EXIT_CODE 0 - scripts/verify-local-gate.sh passed all checks with zero em-dashes and green typecheck.
 Local gate status: GREEN.
 \`\`\`
 
 ## Compliance Checklist
 - [x] Zero em-dash characters used (only simple hyphen '-')
 - [x] Exclusive human authorship by Marco Antonio Conceicao (no AI co-authorship)
-- [x] Strict atomic scope (single-file per PR enforced for heavy debt)
-- [x] Local gate and CI test suite green
+- [x] Strict atomic scope (single-file modified for heavy debt)
+- [x] Grounded test path proof verified via GraphRAG dependency edge
 ```

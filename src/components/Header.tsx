@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Finding } from '../types/egc';
 import { SidebarDrawer } from './SidebarDrawer';
+import { CiRunnerMonitor } from './CiRunnerMonitor';
 
 interface HeaderProps {
   findings: Finding[];
@@ -28,6 +29,10 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const owner = localStorage.getItem('egc_gh_owner') || 'mrcoantonioconceicao';
+  const repo = localStorage.getItem('egc_gh_repo') || 'egc';
+  const token = sessionStorage.getItem('egc_gh_token') || undefined;
 
   const total = findings.length;
   const concluidos = findings.filter(f => f.status === 'concluido').length;
@@ -77,11 +82,14 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Desktop User Badge & Gate */}
+          {/* Desktop User Badge, CI-Runner Monitor & Gate */}
           <div className="hidden lg:flex items-center gap-2.5 text-xs">
+            {/* Componente de Monitoramento 'CI-Runner Monitor' com Traffic Light Indicator */}
+            <CiRunnerMonitor owner={owner} repo={repo} token={token} />
+
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300">
               <User className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Autor Exclusivo:</span>
+              <span>Autor:</span>
               <strong className="text-zinc-100 font-mono">Marco Antônio Conceição</strong>
             </div>
 
@@ -91,8 +99,10 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Mobile Menu Hamburger Button */}
+          {/* Mobile Menu & CI-Runner Monitor */}
           <div className="flex lg:hidden items-center gap-2">
+            <CiRunnerMonitor owner={owner} repo={repo} token={token} />
+
             <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 transition flex items-center gap-1.5 text-xs font-mono"
