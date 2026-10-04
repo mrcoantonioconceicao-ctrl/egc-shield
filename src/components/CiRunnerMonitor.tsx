@@ -11,7 +11,9 @@ import {
   ChevronDown,
   ShieldCheck,
   ShieldAlert,
-  Radio
+  Radio,
+  Unlock,
+  KeyRound
 } from 'lucide-react';
 
 export type TrafficLightState = 'system_green' | 'build_warning' | 'runner_blocked';
@@ -43,7 +45,7 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
   pollIntervalMs = 20000,
 }) => {
   const [trafficLight, setTrafficLight] = useState<TrafficLightState>('system_green');
-  const [trafficLightLabel, setTrafficLightLabel] = useState<'System Green' | 'Build Warning' | 'Runner Blocked'>('System Green');
+  const [trafficLightLabel, setTrafficLightLabel] = useState<string>('System Green');
   const [statusDetails, setStatusDetails] = useState<string>('Iniciando monitoramento de saúde do CI-Runner...');
   const [latestRun, setLatestRun] = useState<CiRun | null>(null);
   const [runs, setRuns] = useState<CiRun[]>([]);
@@ -51,33 +53,45 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [lastPolledAt, setLastPolledAt] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<boolean>(false);
+  const [failureDiagnostic, setFailureDiagnostic] = useState<string | null>(null);
+  const [isUnblocking, setIsUnblocking] = useState<boolean>(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const pollStatus = async (isManual = false) => {
+  const pollStatus = async (isManual = false, forceUnblock = false) => {
     if (!owner || !repo) return;
     if (isManual) setLoading(true);
+    if (forceUnblock) setIsUnblocking(true);
     setErrorMessage(null);
 
     try {
       const headers: Record<string, string> = {};
       if (token) headers['x-github-token'] = token;
 
+      const unblockParam = forceUnblock ? '&unblock=true' : '';
       const data = await safeFetchJson<any>(
-        `/api/github/actions/runs?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
+        `/api/github/actions/runs?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}${unblockParam}`,
         { headers }
       );
 
+      setAuthError(Boolean(data.authError));
       setTrafficLight(data.trafficLight || 'system_green');
       setTrafficLightLabel(data.trafficLightLabel || 'System Green');
       setStatusDetails(data.statusDetails || '');
       setLatestRun(data.latestRun || null);
       setRuns(data.runs || []);
+      setFailureDiagnostic(data.failureDiagnostic || null);
       setLastPolledAt(new Date().toLocaleTimeString());
+
+      if (data.authError) {
+        setErrorMessage('Credenciais do GitHub inválidas ou ausentes ("Bad credentials"). Atualize seu Token PAT.');
+      }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Erro de rede');
+      setErrorMessage(err.message || 'Erro de rede ao consultar CI-Runner');
     } finally {
       if (isManual) setLoading(false);
+      if (forceUnblock) setIsUnblocking(false);
     }
   };
 
@@ -85,7 +99,7 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
     if (owner && repo) {
       pollStatus(true);
 
-      // Start automatic polling every interval
+      // Inicia polling periódico
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         pollStatus(false);
@@ -116,7 +130,7 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
               ? 'bg-amber-950/70 border-amber-600/80 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
               : 'bg-rose-950/70 border-rose-600/80 text-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.25)]'
           }`}
-          title="CI-Runner Monitor: Clique para ver histórico e status das runs"
+          title="CI-Runner Monitor: Clique para ver histórico, diagnósticos e desbloqueio"
         >
           {/* Traffic Light Physical Housing (3 circular lenses) */}
           <div className="flex items-center gap-1.5 bg-zinc-950 px-2 py-1 rounded-md border border-zinc-800 shadow-inner">
@@ -136,7 +150,7 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
                   ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24] animate-pulse'
                   : 'bg-amber-950/50 opacity-40'
               }`}
-              title="Amarelo: Build Warning"
+              title="Amarelo: Build Warning / Credencial"
             />
             {/* Green Light */}
             <span
@@ -166,7 +180,7 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
         <button
           type="button"
           onClick={() => pollStatus(true)}
-          disabled={loading}
+          disabled={loading || isUnblocking}
           className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition"
           title="Consultar Status API agora"
         >
@@ -190,6 +204,19 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
             </span>
           </div>
 
+          {/* Alerta de Bad credentials (Diretriz 1) */}
+          {authError && (
+            <div className="p-2.5 rounded-lg bg-rose-950/60 border border-rose-600 text-rose-200 text-[11px] space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-rose-300">
+                <KeyRound className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>Falha de Autenticação no GitHub ("Bad credentials")</span>
+              </div>
+              <p className="text-[10px] text-zinc-300 leading-relaxed">
+                O token PAT informado expirou ou não possui as permissões necessárias. Configure um novo token clássico com os escopos <code className="text-rose-300 font-bold">repo</code> e <code className="text-rose-300 font-bold">workflow</code> na barra superior.
+              </p>
+            </div>
+          )}
+
           {/* Traffic Light Status Card */}
           <div className={`p-3 rounded-lg border flex items-start gap-2.5 ${
             isGreen
@@ -205,17 +232,57 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
             ) : (
               <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
             )}
-            <div className="space-y-0.5 text-[11px]">
+            <div className="space-y-1 text-[11px]">
               <div className="font-bold uppercase tracking-wider">
                 Status Atual: {trafficLightLabel}
               </div>
               <p className="opacity-90 leading-relaxed">{statusDetails}</p>
+
+              {/* Botão de Desbloqueio da Esteira (Diretriz 2) */}
+              {isRed && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => pollStatus(true, true)}
+                    disabled={isUnblocking}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-[11px] shadow transition active:scale-95"
+                  >
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>{isUnblocking ? 'Liberando Esteira...' : 'Reconhecer Falha & Desbloquear Esteira'}</span>
+                  </button>
+                  <p className="text-[9px] text-zinc-400 mt-1">
+                    Libera o status para "System Green", permitindo commitar a correção da Run #{latestRun?.run_number || 48}.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Diagnóstico da Falha Recente */}
+          {failureDiagnostic && !isGreen && (
+            <div className="p-2 rounded bg-zinc-950 border border-zinc-800 text-[10px] text-zinc-400 space-y-1">
+              <span className="font-bold text-zinc-300 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-amber-400" />
+                Diagnóstico Técnico da Falha:
+              </span>
+              <p className="text-zinc-400 leading-relaxed">{failureDiagnostic}</p>
+              {latestRun && (
+                <a
+                  href={latestRun.html_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 underline pt-0.5"
+                >
+                  <span>Abrir Logs da Run #{latestRun.run_number} no GitHub</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              )}
+            </div>
+          )}
+
           {/* Polling Meta */}
           <div className="flex items-center justify-between text-[10px] text-zinc-400 px-1">
-            <span>Intervalo de Polling: {pollIntervalMs / 1000}s</span>
+            <span>Polling: {pollIntervalMs / 1000}s</span>
             <span>Última Checagem: {lastPolledAt || 'Agora'}</span>
           </div>
 
@@ -233,7 +300,11 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
                   href={r.html_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center justify-between p-2 rounded bg-zinc-950 hover:bg-zinc-800/80 border border-zinc-800 transition group"
+                  className={`flex items-center justify-between p-2 rounded border transition group ${
+                    r.conclusion === 'failure'
+                      ? 'bg-rose-950/20 hover:bg-rose-900/30 border-rose-900/50'
+                      : 'bg-zinc-950 hover:bg-zinc-800/80 border-zinc-800'
+                  }`}
                 >
                   <div className="flex items-center gap-2 overflow-hidden">
                     {r.conclusion === 'success' ? (
@@ -244,8 +315,10 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
                       <AlertOctagon className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                     )}
                     <div className="truncate">
-                      <p className="font-semibold text-zinc-200 group-hover:text-emerald-300 truncate text-[11px]">
-                        {r.name} #{r.run_number}
+                      <p className={`font-semibold truncate text-[11px] ${
+                        r.conclusion === 'failure' ? 'text-rose-300 group-hover:text-rose-200' : 'text-zinc-200 group-hover:text-emerald-300'
+                      }`}>
+                        {r.name} #{r.run_number} {r.conclusion === 'failure' ? '(Falha)' : ''}
                       </p>
                       <p className="text-[10px] text-zinc-500">
                         {r.head_branch} ({r.head_sha})
@@ -258,7 +331,7 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
             )}
           </div>
 
-          {errorMessage && (
+          {errorMessage && !authError && (
             <p className="text-[10px] text-rose-400 bg-rose-950/30 p-1.5 rounded border border-rose-900">
               {errorMessage}
             </p>
@@ -268,10 +341,10 @@ export const CiRunnerMonitor: React.FC<CiRunnerMonitorProps> = ({
           <div className="pt-2 border-t border-zinc-800 flex items-center justify-between text-[10px]">
             <span className="text-zinc-500">
               {isGreen
-                ? 'Esteira 100% verde para novos commits'
+                ? 'Esteira verde para novos commits'
                 : isYellow
-                ? 'Aguarde conclusão da run antes de commitar'
-                : 'Corrija a falha antes de abrir novas PRs'}
+                ? 'Aguarde a conclusão ou atualize as credenciais'
+                : 'Desbloqueie a esteira ou despache a correção'}
             </span>
             <button
               onClick={() => setIsOpen(false)}

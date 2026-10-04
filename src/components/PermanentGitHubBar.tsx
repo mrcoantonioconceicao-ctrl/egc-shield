@@ -62,14 +62,32 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
   }, [owner, repo, branch, token]);
 
   const testConnection = async () => {
+    const cleanToken = token.trim();
+    if (!cleanToken) {
+      setConnectionStatus({
+        connected: false,
+        message: 'Token clássico do GitHub (PAT) ausente. Forneça o token com os escopos "repo" e "workflow".',
+      });
+      return;
+    }
+
+    if (/\s/.test(cleanToken)) {
+      setConnectionStatus({
+        connected: false,
+        message: 'O token fornecido contém espaços ou quebras de linha inválidas. Remova os espaços.',
+      });
+      return;
+    }
+
     setIsConnecting(true);
     setConnectionStatus(null);
     try {
-      const headers: Record<string, string> = {};
-      if (token) headers['x-github-token'] = token;
+      const headers: Record<string, string> = {
+        'x-github-token': cleanToken,
+      };
 
       const data = await safeFetchJson<any>(
-        `/api/github/status?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
+        `/api/github/status?owner=${encodeURIComponent(owner.trim())}&repo=${encodeURIComponent(repo.trim())}`,
         { headers }
       );
       
@@ -78,7 +96,7 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
           connected: true,
           repoName: data.repoName,
           defaultBranch: data.defaultBranch,
-          message: 'Conexão confirmada via token clássico (PAT).',
+          message: 'Conexão confirmada via token clássico (PAT). Permissões validadas.',
         });
         if (data.defaultBranch && !branch) setBranch(data.defaultBranch);
       } else {

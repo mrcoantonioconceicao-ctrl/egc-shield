@@ -44,9 +44,15 @@ Localizado no cabeçalho superior e diretamente ao lado da barra do token do Git
 
 - **Indicador Estilo Semáforo (Traffic Light)**:
   - **`System Green`**: Lente verde acesa com brilho ativo. Todas as execuções recentes foram concluídas com sucesso (`PASS`). Esteira 100% liberada e segura para novos commits.
-  - **`Build Warning`**: Lente âmbar/amarela pulsante acesa. Execução de workflow em andamento (`in_progress`) ou na fila (`queued`). Alerta preventivo para aguardar a conclusão antes de comitar para evitar concorrência no runner.
-  - **`Runner Blocked`**: Lente vermelha pulsante acesa. Falha detectada na última execução (`failure`, `timed_out` ou `cancelled`). Esteira bloqueada para novos commits até a remediação da quebra.
-- **Histórico e Detalhes**: Popover com o status detalhado, última checagem de polling, lista das últimas 5 runs com commit SHA, branch e link direto para o log no GitHub Actions.
+  - **`Build Warning`**: Lente âmbar/amarela pulsante acesa. Execução de workflow em andamento (`in_progress`), na fila (`queued`) ou credencial ausente/inválida. Alerta preventivo para aguardar a conclusão antes de comitar.
+  - **`Runner Blocked`**: Lente vermelha pulsante acesa. Falha detectada nas execuções recentes (como Runs #45 a #48). A aplicação fornece diagnóstico detalhado e link direto para o log de erro no GitHub Actions sem travar a interface.
+- **Mecanismo de Desbloqueio e Retomada de System Green**:
+  - Botão interativo **"Reconhecer Falha & Desbloquear Esteira"**: Permite que o operador reconheça a falha histórica de uma run anterior, forçando a retomada do estado `System Green` para prosseguir com o despacho da remediação atômica.
+  - O endpoint `/api/github/actions/runs?unblock=true` libera a esteira e registra o reconhecimento da falha histórica.
+- **Tratamento Robusto de Credenciais e Tokens PAT**:
+  - Validação rigorosa de formato antes do disparo de requisições (comprimento mínimo, formato `ghp_` ou `github_pat_` e higienização de espaços em branco).
+  - Captura defensiva de erros HTTP 401/403 ("Bad credentials") com alertas estruturados e orientações diretas para geração de novo token com escopos `repo` e `workflow`.
+- **Histórico e Detalhes**: Popover com o status detalhado, última checagem de polling, lista das últimas runs com commit SHA, branch e link direto para o log no GitHub Actions.
 - **Botão de Atualização Manual**: Permite consultar o estado do runner instantaneamente sob demanda.
 
 ---

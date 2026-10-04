@@ -1,6 +1,7 @@
 /**
  * Servidor de API Express Resiliente para o EGC (Enterprise GraphRAG Context).
- * Totalmente blindado para execução como Função Serverless no Vercel e Node.js standalone.
+ * Totalmente blindado contra erros de autenticação ("Bad credentials"), bloqueios do CI-Runner
+ * e falhas de execução no Vercel e Node.js standalone.
  *
  * Autor: Marco Antônio Conceição
  * Regras: Decisão D2 (Autoria 100% humana) e Decisão D3 (Sem travessões unicode)
@@ -43,13 +44,70 @@ export async function safeGithubFetch(url: string, options: RequestInit = {}, ti
   }
 }
 
-// 3. Helper de Autenticação do GitHub
-export const getGitHubHeaders = (req: Req): Record<string, string> => {
-  const token = (req.headers['x-github-token'] as string) || process.env.GITHUB_CLASSIC_TOKEN || '';
+// 3. Validação Rigorosa de Token Clássico PAT do GitHub (Diretriz 1)
+export interface TokenValidationResult {
+  valid: boolean;
+  token: string;
+  error?: string;
+  tokenType: 'classic' | 'fine-grained' | 'unknown' | 'none';
+}
+
+export function validateGitHubToken(req: Req): TokenValidationResult {
+  const rawToken = ((req.headers['x-github-token'] as string) || process.env.GITHUB_CLASSIC_TOKEN || '').trim();
+
+  if (!rawToken) {
+    return {
+      valid: false,
+      token: '',
+      error: 'Token clássico do GitHub (PAT) ausente. Forneça o token com permissões "repo" e "workflow".',
+      tokenType: 'none',
+    };
+  }
+
+  // Token não pode conter espaços ou quebras de linha
+  if (/\s/.test(rawToken)) {
+    return {
+      valid: false,
+      token: rawToken,
+      error: 'O token fornecido contém espaços ou quebras de linha inválidas.',
+      tokenType: 'unknown',
+    };
+  }
+
+  let tokenType: 'classic' | 'fine-grained' | 'unknown' = 'unknown';
+  if (rawToken.startsWith('ghp_')) {
+    tokenType = 'classic';
+  } else if (rawToken.startsWith('github_pat_')) {
+    tokenType = 'fine-grained';
+  } else if (/^[a-f0-9]{40}$/i.test(rawToken)) {
+    tokenType = 'classic';
+  }
+
+  if (rawToken.length < 20) {
+    return {
+      valid: false,
+      token: rawToken,
+      error: 'Comprimento de token inválido. O token PAT deve possuir ao menos 20 caracteres.',
+      tokenType,
+    };
+  }
+
   return {
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'EGC-Copilot-Engine',
-    ...(token ? { 'Authorization': `token ${token}` } : {})
+    valid: true,
+    token: rawToken,
+    tokenType,
+  };
+}
+
+export const getGitHubHeaders = (req: Req): { headers: Record<string, string>; tokenInfo: TokenValidationResult } => {
+  const tokenInfo = validateGitHubToken(req);
+  return {
+    headers: {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'EGC-Copilot-Engine',
+      ...(tokenInfo.valid ? { 'Authorization': `token ${tokenInfo.token}` } : {})
+    },
+    tokenInfo
   };
 };
 
@@ -76,23 +134,37 @@ export function validateRepoParams(req: Req, res: Res): { owner: string; repo: s
 // ROTAS DE API BLINDADAS COM TRY/CATCH
 // ==========================================
 
-// 1. Status de Conexão com GitHub
+// 1. Status de Conexão com GitHub (Blindado contra Bad credentials)
 apiApp.get('/api/github/status', async (req: Req, res: Res) => {
   try {
     const owner = (req.query.owner as string) || process.env.GITHUB_REPO_OWNER;
     const repo = (req.query.repo as string) || process.env.GITHUB_REPO_NAME;
-    const headers = getGitHubHeaders(req);
+    const { headers, tokenInfo } = getGitHubHeaders(req);
 
-    if (!headers.Authorization) {
+    if (!tokenInfo.valid) {
       return res.status(200).json({
         connected: false,
-        message: 'Token clássico do GitHub não configurado. Forneça o token para varredura do repositório EGC.',
-        configured: false
+        configured: false,
+        authError: true,
+        message: tokenInfo.error || 'Token clássico do GitHub não configurado. Forneça o token para varredura do repositório EGC.',
+        tokenType: tokenInfo.tokenType,
       });
     }
 
     if (owner && repo) {
       const repoRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+      
+      // Captura defensiva de 401/403 Bad credentials
+      if (repoRes.status === 401 || repoRes.status === 403) {
+        return res.status(200).json({
+          connected: false,
+          configured: false,
+          authError: true,
+          message: 'Falha de autenticação ("Bad credentials"). O token PAT informado é inválido ou expirou. Gere um novo token clássico com escopos "repo" e "workflow".',
+          code: 'BAD_CREDENTIALS',
+        });
+      }
+
       if (!repoRes.ok) {
         const errData: any = await repoRes.json().catch(() => ({}));
         return res.status(repoRes.status).json({
@@ -100,6 +172,7 @@ apiApp.get('/api/github/status', async (req: Req, res: Res) => {
           message: `Falha ao conectar ao repositório ${owner}/${repo}: ${errData.message || repoRes.statusText}`
         });
       }
+
       const repoData: any = await repoRes.json();
       return res.status(200).json({
         connected: true,
@@ -112,12 +185,22 @@ apiApp.get('/api/github/status', async (req: Req, res: Res) => {
     }
 
     const userRes = await safeGithubFetch('https://api.github.com/user', { headers });
+    if (userRes.status === 401 || userRes.status === 403) {
+      return res.status(200).json({
+        connected: false,
+        configured: false,
+        authError: true,
+        message: 'Token clássico do GitHub inválido ou expirado ("Bad credentials").'
+      });
+    }
+
     if (!userRes.ok) {
       return res.status(userRes.status).json({
         connected: false,
         message: 'Token clássico do GitHub inválido ou expirado.'
       });
     }
+
     const userData: any = await userRes.json();
     return res.status(200).json({
       connected: true,
@@ -156,9 +239,19 @@ apiApp.get('/api/github/file', async (req: Req, res: Res) => {
       });
     }
 
-    const headers = getGitHubHeaders(req);
+    const { headers } = getGitHubHeaders(req);
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${ref}`;
     const ghRes = await safeGithubFetch(url, { headers });
+
+    if (ghRes.status === 401 || ghRes.status === 403) {
+      return res.status(401).json({
+        success: false,
+        authError: true,
+        error: 'Credenciais do GitHub inválidas ou expiradas ("Bad credentials"). Atualize seu token PAT.',
+        code: 'BAD_CREDENTIALS',
+        statusCode: 401
+      });
+    }
 
     if (!ghRes.ok) {
       const errJson: any = await ghRes.json().catch(() => ({}));
@@ -203,8 +296,19 @@ apiApp.get('/api/github/tree', async (req: Req, res: Res) => {
     const { owner, repo } = coords;
     const branch = (req.query.branch as string) || 'main';
 
-    const headers = getGitHubHeaders(req);
+    const { headers } = getGitHubHeaders(req);
     const treeRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, { headers });
+    
+    if (treeRes.status === 401 || treeRes.status === 403) {
+      return res.status(401).json({
+        success: false,
+        authError: true,
+        error: 'Credenciais do GitHub inválidas ou expiradas ("Bad credentials").',
+        code: 'BAD_CREDENTIALS',
+        statusCode: 401
+      });
+    }
+
     if (!treeRes.ok) {
       const errJson: any = await treeRes.json().catch(() => ({}));
       return res.status(treeRes.status).json({
@@ -235,8 +339,28 @@ apiApp.post('/api/github/deep-scan', async (req: Req, res: Res) => {
     const branch = req.body?.branch || 'main';
     const limit = Number(req.body?.limit) || 40;
 
-    const headers = getGitHubHeaders(req);
+    const { headers, tokenInfo } = getGitHubHeaders(req);
+    if (!tokenInfo.valid) {
+      return res.status(400).json({
+        success: false,
+        authError: true,
+        error: tokenInfo.error || 'Token clássico do GitHub ausente para varredura.',
+        code: 'MISSING_GITHUB_TOKEN',
+        statusCode: 400
+      });
+    }
+
     const treeRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, { headers });
+    if (treeRes.status === 401 || treeRes.status === 403) {
+      return res.status(401).json({
+        success: false,
+        authError: true,
+        error: 'Credenciais do GitHub inválidas ou expiradas ("Bad credentials").',
+        code: 'BAD_CREDENTIALS',
+        statusCode: 401
+      });
+    }
+
     if (!treeRes.ok) {
       const errJson: any = await treeRes.json().catch(() => ({}));
       return res.status(treeRes.status).json({
@@ -303,15 +427,48 @@ apiApp.post('/api/github/deep-scan', async (req: Req, res: Res) => {
   }
 });
 
-// 5. Monitor de Saúde de CI (Runs)
-apiApp.get('/api/github/actions/runs', async (req: Req, res: Res) => {
+// 5. Monitor de Saúde de CI e Desbloqueio da Esteira (Runs #45-#48) (Diretriz 2)
+const handleRunsRequest = async (req: Req, res: Res) => {
   try {
     const coords = validateRepoParams(req, res);
     if (!coords) return;
     const { owner, repo } = coords;
 
-    const headers = getGitHubHeaders(req);
-    const runsRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=5`, { headers });
+    const unblockRequested = req.query.unblock === 'true' || req.query.acknowledged === 'true';
+    const { headers, tokenInfo } = getGitHubHeaders(req);
+
+    if (!tokenInfo.valid) {
+      return res.status(200).json({
+        success: false,
+        trafficLight: 'build_warning',
+        trafficLightLabel: 'Token Ausente',
+        healthStatus: 'unknown',
+        statusDetails: tokenInfo.error || 'Token clássico do GitHub não configurado. Forneça o token com escopo "repo".',
+        authError: true,
+        runs: [],
+        totalRuns: 0,
+        latestRun: null
+      });
+    }
+
+    const runsRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=10`, { headers });
+
+    // Tratamento defensivo de 401/403 Bad credentials
+    if (runsRes.status === 401 || runsRes.status === 403) {
+      const errJson: any = await runsRes.json().catch(() => ({}));
+      return res.status(200).json({
+        success: false,
+        authError: true,
+        trafficLight: 'build_warning',
+        trafficLightLabel: 'Credencial Inválida',
+        healthStatus: 'unknown',
+        statusDetails: 'Falha de autenticação com o GitHub ("Bad credentials"). O token PAT pode ter expirado ou estar sem as permissões "repo" e "workflow".',
+        error: `GitHub API 401: ${errJson.message || 'Bad credentials'}`,
+        runs: [],
+        totalRuns: 0,
+        latestRun: null
+      });
+    }
 
     if (!runsRes.ok) {
       const errJson: any = await runsRes.json().catch(() => ({}));
@@ -336,10 +493,15 @@ apiApp.get('/api/github/actions/runs', async (req: Req, res: Res) => {
     }));
 
     const latestRun = runs[0] || null;
+    const failedRuns = runs.filter((r: any) => r.conclusion === 'failure' || r.conclusion === 'timed_out' || r.conclusion === 'cancelled');
+    const consecutiveFailures = failedRuns.length;
+
     let healthStatus: 'healthy' | 'running' | 'failing' | 'unknown' = 'unknown';
     let trafficLight: 'system_green' | 'build_warning' | 'runner_blocked' = 'system_green';
     let trafficLightLabel: 'System Green' | 'Build Warning' | 'Runner Blocked' = 'System Green';
     let statusDetails = 'Todas as execuções recentes concluídas com sucesso. Esteira livre.';
+    let isAcknowledged = false;
+    let failureDiagnostic: string | null = null;
 
     if (latestRun) {
       if (latestRun.status === 'in_progress' || latestRun.status === 'queued') {
@@ -354,9 +516,19 @@ apiApp.get('/api/github/actions/runs', async (req: Req, res: Res) => {
         statusDetails = `Run #${latestRun.run_number} (${latestRun.name}) concluída com 100% de sucesso.`;
       } else if (latestRun.conclusion === 'failure' || latestRun.conclusion === 'timed_out' || latestRun.conclusion === 'cancelled') {
         healthStatus = 'failing';
-        trafficLight = 'runner_blocked';
-        trafficLightLabel = 'Runner Blocked';
-        statusDetails = `Falha na Run #${latestRun.run_number} (${latestRun.name}). Esteira bloqueada para novos commits.`;
+        failureDiagnostic = `Falha na Run #${latestRun.run_number} (${latestRun.name}) no commit ${latestRun.head_sha}. Causa: Falha de teste ou linter no runner.`;
+
+        if (unblockRequested) {
+          // Desbloqueio explícito do operador para prosseguir com remediação
+          isAcknowledged = true;
+          trafficLight = 'system_green';
+          trafficLightLabel = 'System Green';
+          statusDetails = `Falha na Run #${latestRun.run_number} reconhecida pelo operador. Esteira desbloqueada para despacho do commit cirúrgico.`;
+        } else {
+          trafficLight = 'runner_blocked';
+          trafficLightLabel = 'Runner Blocked';
+          statusDetails = `Falha na Run #${latestRun.run_number} (${latestRun.name}). Esteira bloqueada para novos commits até despacho da remediação ou desbloqueio manual.`;
+        }
       }
     }
 
@@ -369,10 +541,13 @@ apiApp.get('/api/github/actions/runs', async (req: Req, res: Res) => {
       totalRuns: runsData.total_count || 0,
       latestRun,
       runs,
+      consecutiveFailures,
+      isAcknowledged,
+      failureDiagnostic,
       lastPolledAt: new Date().toISOString(),
     });
   } catch (err: any) {
-    console.error('Erro em /api/github/actions/runs:', err);
+    console.error('Erro em consulta de runs do GitHub Actions:', err);
     return res.status(500).json({
       success: false,
       error: err.message,
@@ -380,7 +555,10 @@ apiApp.get('/api/github/actions/runs', async (req: Req, res: Res) => {
       statusCode: 500
     });
   }
-});
+};
+
+apiApp.get('/api/github/actions/runs', handleRunsRequest);
+apiApp.get('/api/github/runs', handleRunsRequest);
 
 // 6. Inspeção de Workflows do GitHub Actions
 apiApp.get('/api/github/actions/workflows', async (req: Req, res: Res) => {
@@ -390,8 +568,19 @@ apiApp.get('/api/github/actions/workflows', async (req: Req, res: Res) => {
     const { owner, repo } = coords;
     const branch = (req.query.branch as string) || 'main';
 
-    const headers = getGitHubHeaders(req);
+    const { headers } = getGitHubHeaders(req);
     const treeRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, { headers });
+    
+    if (treeRes.status === 401 || treeRes.status === 403) {
+      return res.status(401).json({
+        success: false,
+        authError: true,
+        error: 'Credenciais do GitHub inválidas ou expiradas ("Bad credentials").',
+        code: 'BAD_CREDENTIALS',
+        statusCode: 401
+      });
+    }
+
     if (!treeRes.ok) {
       return res.status(treeRes.status).json({
         success: false,
@@ -471,11 +660,12 @@ apiApp.post('/api/github/pr/create', async (req: Req, res: Res) => {
       });
     }
 
-    const headers = getGitHubHeaders(req);
-    if (!headers.Authorization) {
+    const { headers, tokenInfo } = getGitHubHeaders(req);
+    if (!tokenInfo.valid) {
       return res.status(400).json({
         success: false,
-        error: 'Token do GitHub ausente para abertura de Pull Request.',
+        authError: true,
+        error: tokenInfo.error || 'Token clássico do GitHub ausente para abertura de Pull Request.',
         code: 'MISSING_GITHUB_TOKEN',
         statusCode: 400
       });
@@ -483,6 +673,17 @@ apiApp.post('/api/github/pr/create', async (req: Req, res: Res) => {
 
     // 1. Obter SHA da branch base
     const baseRefRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${baseBranch}`, { headers });
+    
+    if (baseRefRes.status === 401 || baseRefRes.status === 403) {
+      return res.status(401).json({
+        success: false,
+        authError: true,
+        error: 'Credenciais do GitHub inválidas ou expiradas ("Bad credentials").',
+        code: 'BAD_CREDENTIALS',
+        statusCode: 401
+      });
+    }
+
     if (!baseRefRes.ok) {
       const errJson: any = await baseRefRes.json().catch(() => ({}));
       return res.status(baseRefRes.status).json({
@@ -490,6 +691,7 @@ apiApp.post('/api/github/pr/create', async (req: Req, res: Res) => {
         error: `Base branch '${baseBranch}' não encontrada: ${errJson.message || baseRefRes.statusText}`
       });
     }
+
     const baseRefData: any = await baseRefRes.json();
     const baseSha = baseRefData.object.sha;
 

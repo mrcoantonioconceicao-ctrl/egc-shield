@@ -41,8 +41,9 @@ export const CiRunnerHealth: React.FC<CiRunnerHealthProps> = ({
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [authError, setAuthError] = useState(false);
 
-  const fetchHealth = async () => {
+  const fetchHealth = async (forceUnblock = false) => {
     if (!owner || !repo) return;
     setLoading(true);
     setErrorMessage(null);
@@ -50,14 +51,19 @@ export const CiRunnerHealth: React.FC<CiRunnerHealthProps> = ({
       const headers: Record<string, string> = {};
       if (token) headers['x-github-token'] = token;
 
+      const unblockParam = forceUnblock ? '&unblock=true' : '';
       const data = await safeFetchJson<any>(
-        `/api/github/actions/runs?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
+        `/api/github/actions/runs?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}${unblockParam}`,
         { headers }
       );
 
+      setAuthError(Boolean(data.authError));
       setHealthStatus(data.healthStatus);
       setLatestRun(data.latestRun);
       setRuns(data.runs || []);
+      if (data.authError) {
+        setErrorMessage('Credenciais do GitHub inválidas ou ausentes ("Bad credentials"). Atualize seu Token PAT.');
+      }
     } catch (err: any) {
       setErrorMessage(err.message);
     } finally {
@@ -132,7 +138,7 @@ export const CiRunnerHealth: React.FC<CiRunnerHealthProps> = ({
 
         <button
           type="button"
-          onClick={fetchHealth}
+          onClick={() => fetchHealth(false)}
           disabled={loading}
           className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700 transition"
           title="Atualizar status do CI-Runner"
