@@ -74,17 +74,18 @@ O gerador de Pull Requests (`PrGenerator`) integra-se diretamente à API do GitH
 
 ## Resiliência de Respostas HTTP/JSON e Roteamento Vercel
 
-Eliminação definitiva dos erros `405 Method Not Allowed` e `Unexpected token 'T', is not valid JSON`:
+Eliminação definitiva dos erros `FUNCTION_INVOCATION_FAILED` (HTTP 500), `405 Method Not Allowed` e `Unexpected token 'T', is not valid JSON`:
 
+- **Blindagem contra FUNCTION_INVOCATION_FAILED (Vercel Serverless)**:
+  - Isolamento arquitetural completo da API no módulo `src/server/apiApp.ts`, eliminando importações de dependências de desenvolvimento (como `vite`) na execução serverless.
+  - Handler serverless (`api/index.ts`) encapsulado num bloco global `try/catch` defensivo com resposta JSON estruturada `{ success: false, error: err.message, stack: ... }` e código 500, impedindo falhas de invocação no gateway da Vercel.
+  - Validação prévia e explícita de variáveis de ambiente e parâmetros (`owner`, `repo`, `path`, token do GitHub), retornando status 400 descritivo imediato caso algum esteja ausente.
+  - Chamadas à API do GitHub encapsuladas na função `safeGithubFetch` com timeout determinístico de 8000ms via `AbortController` para prevenir esgotamento do tempo limite da função serverless.
 - **Eliminação do Erro 405 (Method Not Allowed)**:
   - O erro 405 no Vercel ocorria porque requisições `POST` ou `OPTIONS` para rotas de `/api/` sofriam rewrite para `/index.html` (arquivo estático que recusa métodos POST).
   - Configurado rewrite com negative lookahead no `vercel.json`: `/((?!api/).*)` para `/index.html`, garantindo que `/api/*` seja sempre roteado para a função serverless (`api/index.ts` / Express), sem colisão com os ativos estáticos do SPA.
   - Implementado suporte explícito a requisições preflight `OPTIONS` com status 200 OK e cabeçalhos CORS completos (`Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`).
 - **Front-end (`safeFetchJson`)**: O cliente HTTP inspeciona o cabeçalho `content-type` antes de qualquer chamada a `.json()`. Caso o servidor retorne HTML de erro (páginas 404/500 do Vercel ou CDN), o corpo é capturado via `response.text()` e transformado em um erro técnico legível, impedindo o congelamento da interface.
-- **Back-end Serverless (`server.ts`, `api/index.ts` & `vercel.json`)**:
-  - Middleware forçando `Content-Type: application/json; charset=utf-8` em todas as rotas `/api/*`.
-  - Tratamento 404 estrito retornando objeto JSON padronizado para qualquer rota não mapeada.
-  - Middleware global de exceção garantindo formato `{ success: false, error: err.message, statusCode: 500 }`.
 
 ---
 
