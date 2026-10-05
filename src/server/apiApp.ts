@@ -130,6 +130,62 @@ export function validateRepoParams(req: Req, res: Res): { owner: string; repo: s
   return { owner, repo };
 }
 
+/**
+ * Detecta dinamicamente a branch padrão do repositório alvo (GET /repos/{owner}/{repo})
+ * antes de qualquer operação de criação de branch (git/refs) ou abertura de Pull Request (pulls).
+ * Elimina definitivamente a rigidez de nomes estáticos como 'main' e previne erros 404 Not Found.
+ *
+ * Autor: Marco Antônio Conceição
+ * Regras: Decisão D2 (Autoria humana) e Decisão D3 (Sem travessões unicode)
+ */
+export async function resolveTargetBranch(
+  owner: string,
+  repo: string,
+  headers: Record<string, string>,
+  userSpecifiedBranch?: string
+): Promise<{ resolvedBranch: string; defaultBranch: string; source: 'detected' | 'user_override' | 'fallback' }> {
+  let defaultBranch = '';
+
+  try {
+    const repoRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}`, { headers }, 4000);
+    if (repoRes.ok) {
+      const repoData: any = await repoRes.json();
+      if (repoData?.default_branch && typeof repoData.default_branch === 'string') {
+        defaultBranch = repoData.default_branch.trim();
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[DefaultBranchDetector] Falha ao consultar repositório ${owner}/${repo}:`, err.message);
+  }
+
+  const cleanUserBranch = (userSpecifiedBranch || '').trim();
+
+  // Se o usuário especificou explicitamente uma branch e ela não é a convenção genérica 'main' quando a default_branch for diferente
+  if (cleanUserBranch && cleanUserBranch !== 'main') {
+    return {
+      resolvedBranch: cleanUserBranch,
+      defaultBranch: defaultBranch || cleanUserBranch,
+      source: 'user_override'
+    };
+  }
+
+  // Se detectamos com sucesso a default_branch da API do GitHub, utilizamos como prioritária
+  if (defaultBranch) {
+    return {
+      resolvedBranch: defaultBranch,
+      defaultBranch,
+      source: 'detected'
+    };
+  }
+
+  // Fallback seguro caso a chamada de metadados falhe
+  return {
+    resolvedBranch: cleanUserBranch || 'main',
+    defaultBranch: 'main',
+    source: 'fallback'
+  };
+}
+
 // ==========================================
 // ROTAS DE API BLINDADAS COM TRY/CATCH
 // ==========================================
@@ -220,6 +276,34 @@ apiApp.get('/api/github/status', async (req: Req, res: Res) => {
   }
 });
 
+// 1.1 Detecção Dinâmica da Branch Padrão (default_branch) do Repositório
+apiApp.get('/api/github/default-branch', async (req: Req, res: Res) => {
+  try {
+    const coords = validateRepoParams(req, res);
+    if (!coords) return;
+    const { owner, repo } = coords;
+
+    const { headers } = getGitHubHeaders(req);
+    const branchInfo = await resolveTargetBranch(owner, repo, headers, req.query.branch as string);
+
+    return res.status(200).json({
+      success: true,
+      owner,
+      repo,
+      defaultBranch: branchInfo.defaultBranch,
+      resolvedBranch: branchInfo.resolvedBranch,
+      source: branchInfo.source
+    });
+  } catch (err: any) {
+    console.error('Erro em /api/github/default-branch:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message,
+      statusCode: 500
+    });
+  }
+});
+
 // 2. Busca de Conteúdo de Arquivo no Repositório
 apiApp.get('/api/github/file', async (req: Req, res: Res) => {
   try {
@@ -228,8 +312,6 @@ apiApp.get('/api/github/file', async (req: Req, res: Res) => {
     const { owner, repo } = coords;
 
     const filePath = req.query.path as string;
-    const ref = (req.query.ref as string) || 'main';
-
     if (!filePath) {
       return res.status(400).json({
         success: false,
@@ -240,7 +322,10 @@ apiApp.get('/api/github/file', async (req: Req, res: Res) => {
     }
 
     const { headers } = getGitHubHeaders(req);
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${ref}`;
+    const branchInfo = await resolveTargetBranch(owner, repo, headers, req.query.ref as string);
+    const ref = branchInfo.resolvedBranch;
+
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${encodeURIComponent(ref)}`;
     const ghRes = await safeGithubFetch(url, { headers });
 
     if (ghRes.status === 401 || ghRes.status === 403) {
@@ -294,10 +379,12 @@ apiApp.get('/api/github/tree', async (req: Req, res: Res) => {
     const coords = validateRepoParams(req, res);
     if (!coords) return;
     const { owner, repo } = coords;
-    const branch = (req.query.branch as string) || 'main';
 
     const { headers } = getGitHubHeaders(req);
-    const treeRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, { headers });
+    const branchInfo = await resolveTargetBranch(owner, repo, headers, req.query.branch as string);
+    const branch = branchInfo.resolvedBranch;
+
+    const treeRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`, { headers });
     
     if (treeRes.status === 401 || treeRes.status === 403) {
       return res.status(401).json({
@@ -336,7 +423,6 @@ apiApp.post('/api/github/deep-scan', async (req: Req, res: Res) => {
     const coords = validateRepoParams(req, res);
     if (!coords) return;
     const { owner, repo } = coords;
-    const branch = req.body?.branch || 'main';
     const limit = Number(req.body?.limit) || 40;
 
     const { headers, tokenInfo } = getGitHubHeaders(req);
@@ -350,7 +436,10 @@ apiApp.post('/api/github/deep-scan', async (req: Req, res: Res) => {
       });
     }
 
-    const treeRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, { headers });
+    const branchInfo = await resolveTargetBranch(owner, repo, headers, req.body?.branch);
+    const branch = branchInfo.resolvedBranch;
+
+    const treeRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`, { headers });
     if (treeRes.status === 401 || treeRes.status === 403) {
       return res.status(401).json({
         success: false,
@@ -566,10 +655,12 @@ apiApp.get('/api/github/actions/workflows', async (req: Req, res: Res) => {
     const coords = validateRepoParams(req, res);
     if (!coords) return;
     const { owner, repo } = coords;
-    const branch = (req.query.branch as string) || 'main';
 
     const { headers } = getGitHubHeaders(req);
-    const treeRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, { headers });
+    const branchInfo = await resolveTargetBranch(owner, repo, headers, req.query.branch as string);
+    const branch = branchInfo.resolvedBranch;
+
+    const treeRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`, { headers });
     
     if (treeRes.status === 401 || treeRes.status === 403) {
       return res.status(401).json({
@@ -671,8 +762,12 @@ apiApp.post('/api/github/pr/create', async (req: Req, res: Res) => {
       });
     }
 
-    // 1. Obter SHA da branch base
-    const baseRefRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${baseBranch}`, { headers });
+    // 1. Resolução dinâmica mandatória da branch padrão do repositório
+    const branchInfo = await resolveTargetBranch(owner, repo, headers, baseBranch);
+    let targetBaseBranch = branchInfo.resolvedBranch;
+
+    // 2. Obter SHA da branch base com fallback automático para default_branch
+    let baseRefRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(targetBaseBranch)}`, { headers });
     
     if (baseRefRes.status === 401 || baseRefRes.status === 403) {
       return res.status(401).json({
@@ -684,11 +779,18 @@ apiApp.post('/api/github/pr/create', async (req: Req, res: Res) => {
       });
     }
 
+    // Se a branch informada retornou 404 e for diferente da default_branch, realiza fallback automático
+    if (!baseRefRes.ok && targetBaseBranch !== branchInfo.defaultBranch) {
+      console.warn(`Branch '${targetBaseBranch}' não encontrada (404). Realizando fallback automático para default_branch '${branchInfo.defaultBranch}'...`);
+      targetBaseBranch = branchInfo.defaultBranch;
+      baseRefRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(targetBaseBranch)}`, { headers });
+    }
+
     if (!baseRefRes.ok) {
       const errJson: any = await baseRefRes.json().catch(() => ({}));
       return res.status(baseRefRes.status).json({
         success: false,
-        error: `Base branch '${baseBranch}' não encontrada: ${errJson.message || baseRefRes.statusText}`
+        error: `Base branch '${targetBaseBranch}' não encontrada no repositório (default_branch detectada: '${branchInfo.defaultBranch}'): ${errJson.message || baseRefRes.statusText}`
       });
     }
 
@@ -757,7 +859,7 @@ apiApp.post('/api/github/pr/create', async (req: Req, res: Res) => {
         title: prTitle,
         body: prBody,
         head: branchName,
-        base: baseBranch,
+        base: targetBaseBranch,
       }),
     });
 
@@ -775,6 +877,8 @@ apiApp.post('/api/github/pr/create', async (req: Req, res: Res) => {
       prUrl: prData.html_url,
       prNumber: prData.number,
       branch: branchName,
+      baseBranch: targetBaseBranch,
+      defaultBranch: branchInfo.defaultBranch,
       message: `Pull Request #${prData.number} criada com sucesso no GitHub!`
     });
   } catch (err: any) {
@@ -794,9 +898,10 @@ apiApp.post('/api/github/orchestrate/run', async (req: Req, res: Res) => {
     const {
       owner = process.env.GITHUB_REPO_OWNER || 'mrcoantonioconceicao',
       repo = process.env.GITHUB_REPO_NAME || 'egc',
+      baseBranch,
       runNumber = 48,
       issueNumber = 48,
-      targetFile = 'src/core/pipelineCore.ts',
+      targetFile = 'src/core/embeddings/pipelineCore.ts',
       branchName = 'fix/issue-remediation-autonomous',
       autoOpenPr = true,
     } = req.body;
@@ -930,14 +1035,25 @@ export function executeBoundedStreamProcessing(buffer: Uint8Array): { status: 'p
 - [x] Exclusive authorship by Marco Antonio Conceicao - Decision D2 compliant.`;
 
     // ETAPA 4: Automação de Branch & Despacho Oficial de Pull Request
-    addLog(`ETAPA 4: Criando branch '${branchName}' e preparando Pull Request no GitHub...`);
+    addLog(`ETAPA 4: Detectando dinamicamente branch padrão e preparando Pull Request no GitHub...`);
     let prUrl = '';
     let prNumber: number | null = null;
     let dispatchSuccess = false;
 
+    // Resolução mandatória da branch padrão através da API
+    const branchInfo = await resolveTargetBranch(owner, repo, headers, baseBranch);
+    let targetBaseBranch = branchInfo.resolvedBranch;
+    addLog(`Branch base resolvida dinamicamente: '${targetBaseBranch}' (Default Branch: '${branchInfo.defaultBranch}', Origem: ${branchInfo.source}).`);
+
     if (tokenInfo.valid && autoOpenPr) {
       try {
-        const baseRefRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/main`, { headers }, 4000);
+        let baseRefRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(targetBaseBranch)}`, { headers }, 4000);
+        if (!baseRefRes.ok && targetBaseBranch !== branchInfo.defaultBranch) {
+          addLog(`Aviso: Branch '${targetBaseBranch}' retornou status ${baseRefRes.status}. Fallback automático para '${branchInfo.defaultBranch}'...`);
+          targetBaseBranch = branchInfo.defaultBranch;
+          baseRefRes = await safeGithubFetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(targetBaseBranch)}`, { headers }, 4000);
+        }
+
         if (baseRefRes.ok) {
           const baseRefJson: any = await baseRefRes.json();
           const baseSha = baseRefJson.object.sha;
@@ -985,7 +1101,7 @@ export function executeBoundedStreamProcessing(buffer: Uint8Array): { status: 'p
                 title: `fix(pipeline): autonomous remediation for Run #${runNumber} (#${issueNumber})`,
                 body: proofReport,
                 head: branchName,
-                base: 'main',
+                base: targetBaseBranch,
               }),
             }, 5000);
 
@@ -994,7 +1110,7 @@ export function executeBoundedStreamProcessing(buffer: Uint8Array): { status: 'p
               prUrl = prJson.html_url;
               prNumber = prJson.number;
               dispatchSuccess = true;
-              addLog(`Pull Request #${prNumber} criada com sucesso no GitHub: ${prUrl}`);
+              addLog(`Pull Request #${prNumber} criada com sucesso no GitHub com base na branch '${targetBaseBranch}': ${prUrl}`);
             }
           }
         }

@@ -92,12 +92,17 @@ Antes de propor alterações ou gerar remediações, o sistema aciona o endpoint
 
 ## Despacho de Pull Requests em Um Clique (One-Click Real PR)
 
-O gerador de Pull Requests (`PrGenerator`) integra-se diretamente à API do GitHub (`/api/github/pr/create`):
+O gerador de Pull Requests (`PrGenerator`) e o Orquestrador Autônomo integram-se diretamente à API do GitHub (`/api/github/pr/create` e `/api/github/orchestrate/run`):
 
-1. **Criação de Branch Isolada**: Gera automaticamente uma branch efêmera (ex: `fix/surgical-c44-1234`) a partir da branch base.
-2. **Commit Atômico com Autoria Exclusiva**: Grava a alteração cirúrgica de arquivo único com autor e committer definidos exclusivamente como `Marco Antonio Conceicao <mrcoantonioconceicao@gmail.com>`.
-3. **Abertura Oficial da PR**: Abre a Pull Request no repositório com título Conventional Commits e corpo detalhado em inglês técnico (Summary, Changes, Proof ancorado no grafo de testes e Compliance Checklist).
-4. **Link Imediato**: Retorna o link oficial da PR no GitHub diretamente na interface.
+1. **Detecção Dinâmica da Branch Padrão (Eliminação de Erros 404 Not Found)**:
+   - Antes de criar branches (`git/refs`) ou abrir PRs (`pulls`), o sistema consulta a API do GitHub (`GET /repos/{owner}/{repo}`) via `resolveTargetBranch` para extrair a propriedade exata `default_branch` do repositório (ex: `main`, `master`, `trunk` ou branch de release).
+   - Eliminação definitiva da rigidez e dependência estática de `'main'`, prevenindo falhas de `404 Not Found` quando o repositório utiliza outra branch principal.
+   - Suporte a sobrescrita opcional na interface pelo operador com fallback automático transparente para a `default_branch` detectada caso a branch informada retorne 404.
+   - Endpoint dedicado `GET /api/github/default-branch` para consulta e sincronização em tempo real.
+2. **Criação de Branch Isolada**: Gera automaticamente uma branch efêmera (ex: `fix/surgical-c44-1234` ou `fix/issue-remediation-autonomous`) a partir do SHA da branch base resolvida.
+3. **Commit Atômico com Autoria Exclusiva**: Grava a alteração cirúrgica de arquivo único com autor e committer definidos exclusivamente como `Marco Antonio Conceicao <mrcoantonioconceicao@gmail.com>`.
+4. **Abertura Oficial da PR**: Abre a Pull Request no repositório com título Conventional Commits e corpo detalhado em inglês técnico (Summary, Changes, Proof ancorado no grafo de testes e Compliance Checklist).
+5. **Link Imediato**: Retorna o link oficial da PR no GitHub diretamente na interface.
 
 ---
 

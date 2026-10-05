@@ -9,7 +9,7 @@
  * Autor: Marco Antônio Conceição
  * Regras: Decisão D2 (Autoria 100% humana) e Decisão D3 (Sem travessões unicode)
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Cpu, 
   Play, 
@@ -51,6 +51,40 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
   const [issueNumber, setIssueNumber] = useState<number>(48);
   const [targetFile, setTargetFile] = useState<string>('src/core/embeddings/pipelineCore.ts');
   const [branchName, setBranchName] = useState<string>('fix/issue-remediation-autonomous');
+  const [baseBranch, setBaseBranch] = useState<string>(() => localStorage.getItem('egc_gh_branch') || '');
+  const [detectedDefaultBranch, setDetectedDefaultBranch] = useState<string>('main');
+  const [isDetectingBranch, setIsDetectingBranch] = useState<boolean>(false);
+
+  const fetchDefaultBranch = async () => {
+    setIsDetectingBranch(true);
+    const owner = localStorage.getItem('egc_gh_owner') || 'mrcoantonioconceicao';
+    const repo = localStorage.getItem('egc_gh_repo') || 'egc';
+    const token = sessionStorage.getItem('egc_gh_token') || undefined;
+
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['x-github-token'] = token;
+
+      const data = await safeFetchJson<any>(
+        `/api/github/default-branch?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
+        { headers }
+      );
+      if (data && data.defaultBranch) {
+        setDetectedDefaultBranch(data.defaultBranch);
+        if (!baseBranch) {
+          setBaseBranch(data.defaultBranch);
+        }
+      }
+    } catch (err) {
+      console.warn('Falha ao detectar default_branch dinamicamente no orquestrador:', err);
+    } finally {
+      setIsDetectingBranch(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDefaultBranch();
+  }, []);
 
   // Resultados da orquestração
   const [result, setResult] = useState<{
@@ -124,6 +158,7 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
         body: JSON.stringify({
           owner,
           repo,
+          baseBranch: (baseBranch || detectedDefaultBranch || 'main').trim(),
           runNumber,
           issueNumber,
           targetFile,
@@ -202,7 +237,7 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
       </div>
 
       {/* Painel de Coordenadas de Execução */}
-      <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-mono">
+      <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-mono">
         <div>
           <label className="text-zinc-400 text-[11px] block mb-1">Run GitHub Actions:</label>
           <input
@@ -228,6 +263,19 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
             value={targetFile}
             onChange={(e) => setTargetFile(e.target.value)}
             className="w-full bg-zinc-950 border border-zinc-700 rounded-lg p-2 text-zinc-200 focus:outline-none focus:border-emerald-500"
+          />
+        </div>
+        <div>
+          <label className="text-zinc-400 text-[11px] block mb-1">
+            Branch Base (Destino):
+          </label>
+          <input
+            type="text"
+            value={baseBranch}
+            onChange={(e) => setBaseBranch(e.target.value)}
+            placeholder={`Auto: ${detectedDefaultBranch}`}
+            className="w-full bg-zinc-950 border border-zinc-700 rounded-lg p-2 text-zinc-200 focus:outline-none focus:border-cyan-500 placeholder:text-zinc-600"
+            title="Deixe em branco para usar a branch padrão detectada via API"
           />
         </div>
         <div>

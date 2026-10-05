@@ -17,7 +17,8 @@ import {
   ExternalLink,
   Workflow,
   RefreshCw,
-  Zap
+  Zap,
+  GitBranch
 } from 'lucide-react';
 
 interface PrGeneratorProps {
@@ -64,6 +65,42 @@ export const PrGenerator: React.FC<PrGeneratorProps> = ({
     message?: string;
     error?: string;
   } | null>(null);
+
+  // Dynamic Base Branch State (Diretriz Técnica 1)
+  const [detectedDefaultBranch, setDetectedDefaultBranch] = useState<string>('main');
+  const [customBaseBranch, setCustomBaseBranch] = useState<string>(() => localStorage.getItem('egc_gh_branch') || '');
+  const [isDetectingBranch, setIsDetectingBranch] = useState<boolean>(false);
+
+  const fetchDefaultBranch = async () => {
+    setIsDetectingBranch(true);
+    const owner = localStorage.getItem('egc_gh_owner') || 'mrcoantonioconceicao';
+    const repo = localStorage.getItem('egc_gh_repo') || 'egc';
+    const token = sessionStorage.getItem('egc_gh_token') || undefined;
+
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['x-github-token'] = token;
+
+      const data = await safeFetchJson<any>(
+        `/api/github/default-branch?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`,
+        { headers }
+      );
+      if (data && data.defaultBranch) {
+        setDetectedDefaultBranch(data.defaultBranch);
+        if (!customBaseBranch) {
+          setCustomBaseBranch(data.defaultBranch);
+        }
+      }
+    } catch (err) {
+      console.warn('Falha ao detectar default_branch dinamicamente:', err);
+    } finally {
+      setIsDetectingBranch(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDefaultBranch();
+  }, []);
 
   const currentFinding = findings.find(f => f.id === targetFindingId) || selectedFinding;
 
@@ -179,7 +216,7 @@ ${summary}
     setIsInspectingWorkflows(true);
     const owner = localStorage.getItem('egc_gh_owner') || 'mrcoantonioconceicao';
     const repo = localStorage.getItem('egc_gh_repo') || 'egc';
-    const branch = localStorage.getItem('egc_gh_branch') || 'main';
+    const branch = (customBaseBranch || detectedDefaultBranch || 'main').trim();
     const token = sessionStorage.getItem('egc_gh_token') || undefined;
 
     try {
@@ -206,7 +243,7 @@ ${summary}
 
     const owner = localStorage.getItem('egc_gh_owner') || 'mrcoantonioconceicao';
     const repo = localStorage.getItem('egc_gh_repo') || 'egc';
-    const baseBranch = localStorage.getItem('egc_gh_branch') || 'main';
+    const baseBranch = (customBaseBranch || detectedDefaultBranch || 'main').trim();
     const token = sessionStorage.getItem('egc_gh_token') || undefined;
     const branchName = `fix/surgical-${currentFinding.code.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now().toString().slice(-4)}`;
 
@@ -331,6 +368,41 @@ ${summary}
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Dynamic Base Branch Selector (Diretriz Técnica 1) */}
+          <div className="space-y-1 p-2.5 rounded bg-zinc-950 border border-zinc-800">
+            <div className="flex items-center justify-between">
+              <label className="text-zinc-300 font-bold flex items-center gap-1.5 text-xs">
+                <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Branch Base de Destino:</span>
+              </label>
+              <span className="text-[10px] text-zinc-400 font-mono">
+                Default detectada: <span className="text-emerald-400 font-bold">{detectedDefaultBranch}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={customBaseBranch}
+                onChange={(e) => setCustomBaseBranch(e.target.value)}
+                placeholder={`Padrão do repositório: ${detectedDefaultBranch}`}
+                className="flex-1 bg-zinc-900 border border-zinc-700 rounded p-1.5 text-zinc-200 focus:border-cyan-500 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={fetchDefaultBranch}
+                disabled={isDetectingBranch}
+                className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 text-[11px] flex items-center gap-1 font-sans"
+                title="Consultar default_branch via API do GitHub"
+              >
+                <RefreshCw className={`w-3 h-3 text-cyan-400 ${isDetectingBranch ? 'animate-spin' : ''}`} />
+                <span>Detectar</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-zinc-500">
+              Campo opcional. Sobrescreve a branch caso necessário, com fallback automático para a branch padrão detectada via API.
+            </p>
           </div>
 
           {/* Title */}
