@@ -2,7 +2,7 @@
  * Orquestrador Autônomo de Engenharia de Software para o EGC.
  * Executa o ciclo de ponta a ponta sem intervenção manual:
  * 1. Leitura e Análise da Issue/Falha (Run #48 / 7054 testes)
- * 2. Isolamento e Correção Técnica (TDD & Regra C44)
+ * 2. Isolamento e Correção Técnica (TDD & Regra C44) com agentes tdd-guide e build-error-resolver
  * 3. Validação Local e Geração de Evidências (7054/7054 PASS, 91.4% cobertura)
  * 4. Automação de Branch e Pull Request Oficial no GitHub
  *
@@ -25,7 +25,10 @@ import {
   Copy, 
   FileCode,
   ArrowRight,
-  BookOpen
+  BookOpen,
+  Bug,
+  Wrench,
+  CheckCircle
 } from 'lucide-react';
 import { safeFetchJson } from '../utils/apiClient';
 import { DiaryEntry } from '../types/egc';
@@ -41,11 +44,12 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
   const [isRunning, setIsRunning] = useState(false);
   const [activeStage, setActiveStage] = useState<number>(0);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [activeResultTab, setActiveResultTab] = useState<'overview' | 'tdd' | 'refactor' | 'proof' | 'logs'>('overview');
 
   // Parâmetros configuráveis
   const [runNumber, setRunNumber] = useState<number>(48);
   const [issueNumber, setIssueNumber] = useState<number>(48);
-  const [targetFile, setTargetFile] = useState<string>('src/core/pipelineCore.ts');
+  const [targetFile, setTargetFile] = useState<string>('src/core/embeddings/pipelineCore.ts');
   const [branchName, setBranchName] = useState<string>('fix/issue-remediation-autonomous');
 
   // Resultados da orquestração
@@ -55,6 +59,24 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
     stackTrace: string;
     failedTestName: string;
     proofReport: string;
+    tddAgentOutput?: {
+      agentName: string;
+      action: string;
+      testFile: string;
+      testCode: string;
+      status: string;
+      testsCount: number;
+      assertionProof: string;
+    };
+    buildErrorResolverOutput?: {
+      agentName: string;
+      action: string;
+      targetFile: string;
+      ruleEnforced: string;
+      diffSnippet: string;
+      affectedFilesCount: number;
+      isAtomicC44: boolean;
+    };
     prUrl: string;
     prNumber: number;
     dispatchSuccess: boolean;
@@ -91,10 +113,10 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
       };
       if (token) headers['x-github-token'] = token;
 
-      // Simulação progressiva de estágios para feedback visual ao operador
-      setTimeout(() => setActiveStage(2), 700);
-      setTimeout(() => setActiveStage(3), 1500);
-      setTimeout(() => setActiveStage(4), 2300);
+      // Simulação progressiva de estágios para feedback visual
+      setTimeout(() => setActiveStage(2), 600);
+      setTimeout(() => setActiveStage(3), 1300);
+      setTimeout(() => setActiveStage(4), 2000);
 
       const data = await safeFetchJson<any>('/api/github/orchestrate/run', {
         method: 'POST',
@@ -326,79 +348,209 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
             </div>
           </div>
 
-          {/* Métricas do Portão de Qualidade */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
-            <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-              <span className="text-zinc-400 text-[10px] block">Testes Unitários:</span>
-              <span className="text-emerald-400 font-bold text-sm">
-                {result.metrics.passedTests} / {result.metrics.totalTests} (100%)
-              </span>
-            </div>
-            <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-              <span className="text-zinc-400 text-[10px] block">Cobertura Global:</span>
-              <span className="text-emerald-400 font-bold text-sm">
-                {result.metrics.coverage}
-              </span>
-            </div>
-            <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-              <span className="text-zinc-400 text-[10px] block">Delta Codecov:</span>
-              <span className="text-emerald-400 font-bold text-sm">
-                {result.metrics.deltaCoverage}
-              </span>
-            </div>
-            <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-              <span className="text-zinc-400 text-[10px] block">Travessões Unicode:</span>
-              <span className="text-emerald-400 font-bold text-sm">
-                0 (Regra D3)
-              </span>
-            </div>
+          {/* Sub-Navegação de Resultados do Orquestrador */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 pb-2 text-xs font-mono">
+            <button
+              type="button"
+              onClick={() => setActiveResultTab('overview')}
+              className={`px-3 py-1.5 rounded-lg border transition ${
+                activeResultTab === 'overview'
+                  ? 'bg-zinc-800 text-emerald-300 border-emerald-600 font-bold'
+                  : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+              }`}
+            >
+              Métricas & Qualidade
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveResultTab('tdd')}
+              className={`px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${
+                activeResultTab === 'tdd'
+                  ? 'bg-zinc-800 text-emerald-300 border-emerald-600 font-bold'
+                  : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+              }`}
+            >
+              <Bug className="w-3.5 h-3.5 text-amber-400" />
+              <span>Agente tdd-guide</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveResultTab('refactor')}
+              className={`px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${
+                activeResultTab === 'refactor'
+                  ? 'bg-zinc-800 text-emerald-300 border-emerald-600 font-bold'
+                  : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Agente build-error-resolver (C44)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveResultTab('proof')}
+              className={`px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${
+                activeResultTab === 'proof'
+                  ? 'bg-zinc-800 text-emerald-300 border-emerald-600 font-bold'
+                  : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Relatório de Provas (Proof)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveResultTab('logs')}
+              className={`px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${
+                activeResultTab === 'logs'
+                  ? 'bg-zinc-800 text-emerald-300 border-emerald-600 font-bold'
+                  : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+              }`}
+            >
+              <Terminal className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Terminal de Logs ({result.logs.length})</span>
+            </button>
           </div>
 
-          {/* Terminal de Logs do Ciclo Autônomo */}
-          <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 font-mono text-xs space-y-2">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800 text-zinc-400 text-[11px]">
-              <div className="flex items-center gap-2">
-                <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Console de Execução Autônoma</span>
+          {/* Tab: Métricas Gerais */}
+          {activeResultTab === 'overview' && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs animate-in fade-in">
+              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                <span className="text-zinc-400 text-[10px] block">Testes Unitários:</span>
+                <span className="text-emerald-400 font-bold text-sm">
+                  {result.metrics.passedTests} / {result.metrics.totalTests} (100%)
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => handleCopy(result.logs.join('\n'), 'logs')}
-                className="hover:text-zinc-200 flex items-center gap-1 text-[10px]"
-              >
-                {copiedKey === 'logs' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                <span>Copiar Logs</span>
-              </button>
+              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                <span className="text-zinc-400 text-[10px] block">Cobertura Global:</span>
+                <span className="text-emerald-400 font-bold text-sm">
+                  {result.metrics.coverage}
+                </span>
+              </div>
+              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                <span className="text-zinc-400 text-[10px] block">Delta Codecov:</span>
+                <span className="text-emerald-400 font-bold text-sm">
+                  {result.metrics.deltaCoverage}
+                </span>
+              </div>
+              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                <span className="text-zinc-400 text-[10px] block">Travessões Unicode:</span>
+                <span className="text-emerald-400 font-bold text-sm">
+                  0 (Regra D3)
+                </span>
+              </div>
             </div>
-            <div className="max-h-48 overflow-y-auto space-y-1 text-zinc-300 text-[11px]">
-              {result.logs.map((log, idx) => (
-                <div key={idx} className="leading-relaxed">
-                  <span className="text-emerald-400">❯</span> {log}
+          )}
+
+          {/* Tab: Agente tdd-guide */}
+          {activeResultTab === 'tdd' && result.tddAgentOutput && (
+            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-3 font-mono text-xs animate-in fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <Bug className="w-4 h-4 text-amber-400" />
+                  <span className="font-bold text-zinc-200">
+                    Agente Especializado: {result.tddAgentOutput.agentName}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold">
+                    {result.tddAgentOutput.status}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Relatório de Provas (Proof Report) */}
-          <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 font-mono text-xs space-y-2">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800 text-zinc-400 text-[11px]">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Relatório Oficial de Evidências (Proof Report)</span>
+                <span className="text-zinc-400 text-[10px]">
+                  Arquivo: {result.tddAgentOutput.testFile}
+                </span>
               </div>
-              <button
-                type="button"
-                onClick={() => handleCopy(result.proofReport, 'proof')}
-                className="hover:text-zinc-200 flex items-center gap-1 text-[10px]"
-              >
-                {copiedKey === 'proof' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                <span>Copiar Prova</span>
-              </button>
+
+              <p className="text-zinc-300 text-[11px] leading-relaxed">
+                {result.tddAgentOutput.action}: {result.tddAgentOutput.assertionProof}
+              </p>
+
+              <pre className="p-3 bg-zinc-950 rounded-lg text-emerald-300 text-[11px] overflow-x-auto whitespace-pre-wrap leading-relaxed border border-zinc-800">
+                {result.tddAgentOutput.testCode}
+              </pre>
             </div>
-            <pre className="p-3 bg-zinc-950 rounded-lg text-zinc-300 text-[11px] overflow-x-auto whitespace-pre-wrap leading-relaxed">
-              {result.proofReport}
-            </pre>
-          </div>
+          )}
+
+          {/* Tab: Agente build-error-resolver (C44) */}
+          {activeResultTab === 'refactor' && result.buildErrorResolverOutput && (
+            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-3 font-mono text-xs animate-in fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <Wrench className="w-4 h-4 text-emerald-400" />
+                  <span className="font-bold text-zinc-200">
+                    Agente Especializado: {result.buildErrorResolverOutput.agentName}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold">
+                    Regra C44 Aplicada
+                  </span>
+                </div>
+                <span className="text-zinc-400 text-[10px]">
+                  {result.buildErrorResolverOutput.affectedFilesCount} arquivo físico alterado
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-300">
+                <span className="font-bold text-emerald-400 block mb-1">Regra de Atomicidade:</span>
+                {result.buildErrorResolverOutput.ruleEnforced}
+              </div>
+
+              <pre className="p-3 bg-zinc-950 rounded-lg text-zinc-200 text-[11px] overflow-x-auto whitespace-pre-wrap leading-relaxed border border-zinc-800">
+                {result.buildErrorResolverOutput.diffSnippet}
+              </pre>
+            </div>
+          )}
+
+          {/* Tab: Relatório de Provas (Proof Report) */}
+          {activeResultTab === 'proof' && (
+            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 font-mono text-xs space-y-2 animate-in fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-800 text-zinc-400 text-[11px]">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Relatório Oficial de Evidências (Proof Report)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(result.proofReport, 'proof')}
+                  className="hover:text-zinc-200 flex items-center gap-1 text-[10px]"
+                >
+                  {copiedKey === 'proof' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>Copiar Prova</span>
+                </button>
+              </div>
+              <pre className="p-3 bg-zinc-950 rounded-lg text-zinc-300 text-[11px] overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                {result.proofReport}
+              </pre>
+            </div>
+          )}
+
+          {/* Tab: Terminal de Logs do Ciclo Autônomo */}
+          {activeResultTab === 'logs' && (
+            <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 font-mono text-xs space-y-2 animate-in fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-800 text-zinc-400 text-[11px]">
+                <div className="flex items-center gap-2">
+                  <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Console de Execução Autônoma</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(result.logs.join('\n'), 'logs')}
+                  className="hover:text-zinc-200 flex items-center gap-1 text-[10px]"
+                >
+                  {copiedKey === 'logs' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>Copiar Logs</span>
+                </button>
+              </div>
+              <div className="max-h-56 overflow-y-auto space-y-1 text-zinc-300 text-[11px]">
+                {result.logs.map((log, idx) => (
+                  <div key={idx} className="leading-relaxed">
+                    <span className="text-emerald-400">❯</span> {log}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

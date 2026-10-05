@@ -105,10 +105,10 @@ O gerador de Pull Requests (`PrGenerator`) integra-se diretamente à API do GitH
 
 Eliminação definitiva dos erros `FUNCTION_INVOCATION_FAILED` (HTTP 500), `405 Method Not Allowed` e `Unexpected token 'T', is not valid JSON`:
 
-- **Blindagem contra FUNCTION_INVOCATION_FAILED (Vercel Serverless)**:
+- **Blindagem contra FUNCTION_INVOCATION_FAILED (Vercel Serverless em src/api/ e api/)**:
   - Isolamento arquitetural completo da API no módulo `src/server/apiApp.ts`, eliminando importações de dependências de desenvolvimento (como `vite`) na execução serverless.
-  - Handler serverless (`api/index.ts`) encapsulado num bloco global `try/catch` defensivo com resposta JSON estruturada `{ success: false, error: err.message, stack: ... }` e código 500, impedindo falhas de invocação no gateway da Vercel.
-  - Validação prévia e explícita de variáveis de ambiente e parâmetros (`owner`, `repo`, `path`, token do GitHub), retornando status 400 descritivo imediato caso algum esteja ausente.
+  - Handlers serverless (`src/api/index.ts`, `src/api/github.ts` e `api/index.ts`) encapsulados num bloco global `try/catch` defensivo que captura qualquer exceção não tratada e retorna objeto JSON estruturado com status 500 `{ success: false, error: err.message, code: 'INTERNAL_SERVERLESS_ERROR', statusCode: 500, timestamp: ... }`.
+  - Validação rigorosa da presença e formato de `GITHUB_CLASSIC_TOKEN` antes de qualquer execução de rota (filtrando placeholders booleanos como 'True' e exigindo token clássico válido com >= 20 caracteres sem espaços), retornando status 401 estruturado caso ausente.
   - Chamadas à API do GitHub encapsuladas na função `safeGithubFetch` com timeout determinístico de 8000ms via `AbortController` para prevenir esgotamento do tempo limite da função serverless.
 - **Eliminação do Erro 405 (Method Not Allowed)**:
   - O erro 405 no Vercel ocorria porque requisições `POST` ou `OPTIONS` para rotas de `/api/` sofriam rewrite para `/index.html` (arquivo estático que recusa métodos POST).
