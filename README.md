@@ -38,6 +38,22 @@ O plano opera rigorosamente de baixo para cima, garantindo estabilidade de infra
 
 ---
 
+## Centro de Comando Lateral (Menu Hambúrguer Deslizante)
+
+O componente de navegação superior foi refatorado para um menu lateral esquerdo deslizante (estilo gaveta hambúrguer) com backdrop translúcido:
+
+- **Gatilho Hambúrguer Fixo e Elegante**:
+  - Botão de acesso rápido fixado no canto superior esquerdo do cabeçalho (`Menu`) com indicador `MENU` e identidade visual Dark Mode / System Green.
+- **Gaveta Deslizante (Sidebar Drawer)**:
+  - Animação CSS fluida a partir da esquerda (`slide-in-from-left duration-300`) com backdrop escuro e desfoque (`bg-black/80 backdrop-blur-sm`).
+  - **Altura Elástica e Rolagem Contínua (Sem Cortes)**: Container com `h-full max-h-[100dvh]`, cabeçalho e rodapé fixos (`shrink-0`), corpo rolável elástico (`flex-1 min-h-0 overflow-y-auto overscroll-contain`) e espaçamento inferior generoso (`pb-28`) que garante acesso completo até o último elemento da lista, tanto em mobile (toque) quanto desktop (roda do mouse).
+  - **Módulos do Sistema**: Acesso instantâneo às 8 ferramentas e seções (Matriz dos 108 Achados, Orquestrador Autônomo, AST Diffs, Gerador de PR, Build Fixes, Portão Local, Decisões D1-D32 e Diário de Bordo).
+  - **Navegador de Fases Bottom-Up (Fase 13 a 0)**: Seletor completo das 14 fases do projeto em formato colapsável, eliminando armadilhas de scroll aninhado.
+  - **Métricas e Portões de CI**: Indicador de saúde consolidado, resumo de achados e status do portão com visibilidade integral.
+  - Fechamento automático ao clicar em qualquer opção de navegação, no botão `X` ou no backdrop externo.
+
+---
+
 ## Monitor de Saúde do CI-Runner (CiRunnerMonitor - Traffic Light)
 
 Localizado no cabeçalho superior e diretamente ao lado da barra do token do GitHub (`CiRunnerMonitor`), este componente integra-se com a Status API e Actions API do GitHub para consultar a saúde das execuções recentes de workflow via polling automático (a cada 20 segundos):

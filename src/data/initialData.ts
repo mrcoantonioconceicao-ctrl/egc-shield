@@ -58,6 +58,7 @@ export const DECISIONS_LIST: DecisionRecord[] = [
   { id: 'D30', title: 'Proteção contra Resource Leaks em Streams', summary: 'Fechamento explícito de handles de arquivos, sockets e cursores de grafo.', impactArea: 'Fase 10 / Storage', ruleEnforcement: 'Finalizers com try-finally ou using statement.', status: 'ativa' },
   { id: 'D31', title: 'Padrão Repository para Acesso a Grafos', summary: 'Acesso a nós e arestas mediado exclusivamente por repositórios de domínio.', impactArea: 'Fase 4 / SOA', ruleEnforcement: 'Proibido acoplamento de driver de banco em controllers.', status: 'ativa' },
   { id: 'D32', title: 'Validação Final de Zero-Defect Gate', summary: 'Fase 0 requer 100% dos 108 achados fechados e portão local completamente verde.', impactArea: 'Fase 0 / Release', ruleEnforcement: 'Nenhuma exceção ou débito residual aceito.', status: 'ativa' },
+  { id: 'D33', title: 'Proteção Estrita de Configurações e Assinatura Signed-off-by', summary: 'Proibição absoluta de esvaziamento ou truncamento de arquivos críticos (.opencode, .json, .yaml, .env). Inclusão obrigatória de Signed-off-by.', impactArea: 'Governança & Agentes', ruleEnforcement: 'Diff auditado por CodeRabbit e bloqueio de stubs vazios.', status: 'ativa' },
 ];
 
 // Dívida pesada canônica C44 referenciada explicitamente nas regras

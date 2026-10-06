@@ -1,3 +1,12 @@
+/**
+ * Componente de Gaveta Lateral Deslizante (Sidebar Drawer) para o EGC.
+ * Suporta abertura suave a partir da esquerda ou direita com backdrop translúcido,
+ * altura máxima de 100vh/100dvh, rolagem vertical fluida (overflow-y: auto)
+ * e padding-bottom generoso para exibição integral de todos os elementos.
+ *
+ * Autor: Marco Antônio Conceição
+ * Regras: Decisão D2 (Autoria 100% humana) e Decisão D3 (Sem travessões unicode)
+ */
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
@@ -17,10 +26,10 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   title,
   subtitle,
   children,
-  position = 'right',
+  position = 'left',
   widthClass = 'max-w-md',
 }) => {
-  // Close on ESC key
+  // Fecha a gaveta com a tecla ESC
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
@@ -31,7 +40,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Prevent background body scroll when open on mobile
+  // Evita rolagem do body quando a gaveta estiver aberta
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -47,27 +56,27 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden font-mono text-xs">
-      {/* Backdrop overlay */}
+      {/* Backdrop escuro translúcido com desfoque e foco */}
       <div
         onClick={onClose}
-        className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity duration-300 animate-in fade-in"
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-300 animate-in fade-in cursor-pointer"
         aria-hidden="true"
       />
 
       <div
         className={`fixed inset-y-0 ${
           position === 'right' ? 'right-0' : 'left-0'
-        } flex max-w-full pointer-events-auto`}
+        } flex max-w-full pointer-events-auto h-full max-h-[100dvh]`}
       >
         <div
-          className={`w-screen ${widthClass} bg-zinc-950 border-zinc-800 shadow-2xl flex flex-col justify-between ${
+          className={`w-screen ${widthClass} h-full max-h-[100dvh] bg-zinc-950 border-zinc-800 shadow-[0_0_50px_rgba(0,0,0,0.85)] flex flex-col ${
             position === 'right' ? 'border-l' : 'border-r'
           } animate-in ${
             position === 'right' ? 'slide-in-from-right' : 'slide-in-from-left'
-          } duration-300`}
+          } duration-300 ease-out`}
         >
-          {/* Drawer Header */}
-          <div className="p-4 border-b border-zinc-800/80 bg-zinc-900/80 flex items-center justify-between gap-3">
+          {/* Cabeçalho da Gaveta Lateral (Fixo no topo da gaveta) */}
+          <div className="p-4 border-b border-zinc-800/80 bg-zinc-900/95 backdrop-blur-md flex items-center justify-between gap-3 shrink-0 z-10">
             <div>
               <h2 className="font-bold text-sm text-zinc-100 flex items-center gap-2">
                 {title}
@@ -78,22 +87,22 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-zinc-800 transition active:scale-95 shrink-0"
               aria-label="Fechar gaveta lateral"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 text-zinc-300" />
             </button>
           </div>
 
-          {/* Drawer Body */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Corpo Rolável da Gaveta com altura elástica, scroll suave e padding inferior generoso */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 pb-28 space-y-5 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-zinc-900/50 touch-pan-y">
             {children}
           </div>
 
-          {/* Drawer Footer */}
-          <div className="p-3 border-t border-zinc-800/80 bg-zinc-900/50 text-[10px] text-zinc-500 flex items-center justify-between">
-            <span>EGC Mobile Drawer</span>
-            <span>ESC para fechar</span>
+          {/* Rodapé da Gaveta (Fixo na base da gaveta) */}
+          <div className="p-3 border-t border-zinc-800/80 bg-zinc-900/90 text-[10px] text-zinc-400 flex items-center justify-between font-mono shrink-0">
+            <span className="text-zinc-400">Centro de Comando EGC</span>
+            <span className="text-zinc-500">ESC ou clique fora para fechar</span>
           </div>
         </div>
       </div>

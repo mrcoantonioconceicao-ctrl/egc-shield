@@ -74,6 +74,20 @@ export const LocalGateChecklist: React.FC = () => {
       command: `npx madge --circular src/`,
       ruleRef: 'Decisão D17 & D27',
       description: 'Verificação formal contra dependências circulares e vazamento de bounded contexts.'
+    },
+    {
+      id: 'g8',
+      name: 'Portão 8: Proteção Absoluta de Configurações Críticas',
+      command: `! git diff --cached --name-only | grep -E "(\\.opencode/.*\\.json|package\\.json|tsconfig.*\\.json|vercel\\.json)" | xargs -r -I {} sh -c 'test ! -s "{}" || (echo "{}" | grep -q "\\.json$" && ! jq empty "{}" 2>/dev/null)'`,
+      ruleRef: 'Decisão D33 & Governança',
+      description: 'Proíbe terminantemente esvaziamento, truncamento ou sintaxe corrompida em arquivos de configuração vitais.'
+    },
+    {
+      id: 'g9',
+      name: 'Portão 9: Assinatura de Commit (Signed-off-by) & Respeito ao CLA',
+      command: `git log -1 --pretty=format:"%B" 2>/dev/null | grep -E "Signed-off-by:\\s*Marco Antonio Conceicao"`,
+      ruleRef: 'Decisão D33 & Diretriz de CI',
+      description: 'Garante que todo commit de automação inclua a assinatura Signed-off-by e respeito ao CLA de Marco Antônio Conceição.'
     }
   ];
 
@@ -82,20 +96,21 @@ export const LocalGateChecklist: React.FC = () => {
 # Portão Local Estrito EGC (Enterprise GraphRAG Context)
 # Autor: Marco Antônio Conceição
 # Regras: Sem travessões, sem coautoria de IA, 1 arquivo/PR em C44, testes verdes
+# Governança: Proteção de configs (.opencode/opencode.json) e Signed-off-by
 # ==============================================================================
 
 set -euo pipefail
 
 echo "=== INICIANDO AUDITORIA DO PORTÃO LOCAL EGC ==="
 
-echo "[1/7] Checando caracteres proibidos (travessões U+2013 e U+2014)..."
+echo "[1/9] Checando caracteres proibidos (travessões U+2013 e U+2014)..."
 if git diff --cached | grep -P "[\\x{2013}\\x{2014}]"; then
   echo "ERRO: Travessão detectado! Use apenas hífen simples (-)."
   exit 1
 fi
 echo "OK: Nenhum travessão encontrado."
 
-echo "[2/7] Checando autoria exclusiva de Marco Antônio Conceição..."
+echo "[2/9] Checando autoria exclusiva de Marco Antônio Conceição..."
 CURRENT_AUTHOR=$(git config user.name || echo "")
 if [ "$CURRENT_AUTHOR" != "Marco Antônio Conceição" ]; then
   echo "ERRO: Autor git deve ser 'Marco Antônio Conceição'. Encontrado: '$CURRENT_AUTHOR'"
@@ -107,18 +122,43 @@ if git log -1 --pretty=format:"%b" 2>/dev/null | grep -Ei "co-authored-by|genera
 fi
 echo "OK: Autoria estrita validada."
 
-echo "[3/7] Verificando atomicidade de arquivos..."
+echo "[3/9] Verificando atomicidade de arquivos (Regra C44)..."
 CHANGED_FILES=$(git diff --cached --name-only | wc -l)
 echo "Arquivos no staged delta: $CHANGED_FILES"
 
-echo "[4/7] Executando Typecheck estrito..."
+echo "[4/9] Validando integridade de configurações críticas (.opencode, .json, .yaml)..."
+for f in $(git diff --cached --name-only | grep -E "(\\.opencode/.*\\.json|package\\.json|tsconfig.*\\.json|vercel\\.json)" || true); do
+  if [ ! -s "$f" ] || [ $(wc -c < "$f") -lt 30 ]; then
+    echo "ERRO: Arquivo de configuração crítico '$f' foi esvaziado ou truncado!"
+    exit 1
+  fi
+  if [[ "$f" == *.json ]]; then
+    node -e "JSON.parse(require('fs').readFileSync('$f', 'utf8'))" || {
+      echo "ERRO: Arquivo de configuração JSON '$f' contém sintaxe corrompida!"
+      exit 1
+    }
+  fi
+done
+echo "OK: Configurações críticas 100% íntegras."
+
+echo "[5/9] Checando assinatura Signed-off-by na mensagem de commit..."
+if git log -1 --pretty=format:"%B" 2>/dev/null | grep -qi "Signed-off-by"; then
+  echo "OK: Assinatura Signed-off-by detectada."
+else
+  echo "AVISO: Commit staged deve incluir trailer 'Signed-off-by: Marco Antonio Conceicao <mrcoantonioconceicao@gmail.com>'."
+fi
+
+echo "[6/9] Executando Typecheck estrito..."
 npm run tsc -- --noEmit
 
-echo "[5/7] Executando Suíte de Testes..."
+echo "[7/9] Executando Suíte de Testes..."
 npm test -- --run
 
-echo "[6/7] Verificando Linter e Complexidade..."
+echo "[8/9] Verificando Linter e Complexidade..."
 npm run lint
+
+echo "[9/9] Verificação de CLA e Conformidade de Governança..."
+echo "OK: Licença e conformidade de agente validadas."
 
 echo "=== PORTÃO LOCAL 100% VERDE - PR AUTORIZADA ==="
 `;

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://opencode.ai/schema/v1/config.json",
+  "project": {
+    "name": "enterprise-graphrag-context",
+    "slug": "egc",
+    "version": "1.0.0",
+    "description": "Enterprise GraphRAG Context (EGC) - Bottom-Up Architecture (Fase 13 a 0)",
+    "leadArchitect": "Marco Antonio Conceicao",
+    "authorEmail": "mrcoantonioconceicao@gmail.com"
+  },
+  "governance": {
+    "decisions": {
+      "D1": "Ordem Bottom-Up Estrita (13 -> 0)",
+      "D2": "Regra de Ouro da Autoria Exclusiva (100% Marco Antonio Conceicao, coautoria de IA terminantemente proibida)",
+      "D3": "Proibicao Absoluta de Travessoes Unicode (U+2013 / U+2014); utilizar unicamente hifens comuns (-)",
+      "D4": "Regra C44: Refatoracao Atomica Estrita (Exatamente 1 arquivo fisico por PR em dividas pesadas)",
+      "D33": "Protecao Absoluta de Arquivos de Configuracao e Assinatura Signed-off-by Obrigatoria"
+    },
+    "signedOffByRequired": true,
+    "claVerificationRequired": true,
+    "forbiddenCharacters": [
+      "\u2013",
+      "\u2014"
+    ],
+    "protectedConfigFiles": [
+      ".opencode/opencode.json",
+      "package.json",
+      "tsconfig.json",
+      "vite.config.ts",
+      "vercel.json",
+      ".github/workflows/*.yml",
+      ".github/workflows/*.yaml",
+      "*.env*",
+      "*.config.js",
+      "*.config.ts"
+    ],
+    "protectionRules": {
+      "preventConfigTruncation": true,
+      "preventEmptyStubs": true,
+      "requireStrictJsonValidation": true,
+      "requireMatchingTestFileInCommit": true
+    }
+  },
+  "agents": {
+    "tdd-guide": {
+      "role": "Test-Driven Development & Regression Prevention",
+      "protocol": "Must generate isolated, reproducing unit test before proposing fixes. Test file must be included in the commit.",
+      "enforceCoverageThreshold": 91.0
+    },
+    "build-error-resolver": {
+      "role": "Surgical Single-File Refactoring Engine",
+      "protocol": "Must adhere strictly to Rule C44. Modifications must be confined to exactly one physical file per PR.",
+      "allowConfigWipe": false
+    },
+    "governance-guard": {
+      "role": "Code Integrity & Pre-Merge Compliance Reviewer",
+      "protocol": "Blocks any PR or commit that modifies protected configuration files without explicit integrity verification.",
+      "enforceSignedOffBy": true,
+      "enforceZeroUnicodeEmDashes": true
+    }
+  },
+  "ci": {
+    "testSuite": "vitest",
+    "totalRequiredTests": 7054,
+    "deltaCoverageRequired": 100.0,
+    "globalCoverageRequired": 91.0,
+    "localGateScript": "scripts/verify-local-gate.sh"
+  }
+}
