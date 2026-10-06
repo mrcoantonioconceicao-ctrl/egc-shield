@@ -88,6 +88,13 @@ export const LocalGateChecklist: React.FC = () => {
       command: `git log -1 --pretty=format:"%B" 2>/dev/null | grep -E "Signed-off-by:\\s*Marco Antonio Conceicao"`,
       ruleRef: 'Decisão D33 & Diretriz de CI',
       description: 'Garante que todo commit de automação inclua a assinatura Signed-off-by e respeito ao CLA de Marco Antônio Conceição.'
+    },
+    {
+      id: 'g10',
+      name: 'Portão 10: Bloqueio de Commits Destrutivos e Stubs C44 (Zero REMEDIATION_ID)',
+      command: `! git diff --cached | grep -E "export\\s+const\\s+REMEDIATION_ID"`,
+      ruleRef: 'Regra C44 & Decisão D4',
+      description: 'Bloqueia patches que esvaziem código ou insiram stubs vazios de remediação. Exige modularização real por extração cirúrgica com 100% de integridade funcional.'
     }
   ];
 
@@ -97,20 +104,21 @@ export const LocalGateChecklist: React.FC = () => {
 # Autor: Marco Antônio Conceição
 # Regras: Sem travessões, sem coautoria de IA, 1 arquivo/PR em C44, testes verdes
 # Governança: Proteção de configs (.opencode/opencode.json) e Signed-off-by
+# C44 Reescrita: Bloqueio absoluto de stubs REMEDIATION_ID e destruição de código
 # ==============================================================================
 
 set -euo pipefail
 
 echo "=== INICIANDO AUDITORIA DO PORTÃO LOCAL EGC ==="
 
-echo "[1/9] Checando caracteres proibidos (travessões U+2013 e U+2014)..."
+echo "[1/10] Checando caracteres proibidos (travessões U+2013 e U+2014)..."
 if git diff --cached | grep -P "[\\x{2013}\\x{2014}]"; then
   echo "ERRO: Travessão detectado! Use apenas hífen simples (-)."
   exit 1
 fi
 echo "OK: Nenhum travessão encontrado."
 
-echo "[2/9] Checando autoria exclusiva de Marco Antônio Conceição..."
+echo "[2/10] Checando autoria exclusiva de Marco Antônio Conceição..."
 CURRENT_AUTHOR=$(git config user.name || echo "")
 if [ "$CURRENT_AUTHOR" != "Marco Antônio Conceição" ]; then
   echo "ERRO: Autor git deve ser 'Marco Antônio Conceição'. Encontrado: '$CURRENT_AUTHOR'"
@@ -122,11 +130,18 @@ if git log -1 --pretty=format:"%b" 2>/dev/null | grep -Ei "co-authored-by|genera
 fi
 echo "OK: Autoria estrita validada."
 
-echo "[3/9] Verificando atomicidade de arquivos (Regra C44)..."
+echo "[3/10] Verificando atomicidade de arquivos (Regra C44)..."
 CHANGED_FILES=$(git diff --cached --name-only | wc -l)
 echo "Arquivos no staged delta: $CHANGED_FILES"
 
-echo "[4/9] Validando integridade de configurações críticas (.opencode, .json, .yaml)..."
+echo "[4/10] Bloqueando commits destrutivos e stubs C44 (Zero REMEDIATION_ID)..."
+if git diff --cached | grep -E "export\\s+const\\s+REMEDIATION_ID|const\\s+REMEDIATION_ID"; then
+  echo "ERRO: Tentativa de commit destrutivo! Detectado stub 'REMEDIATION_ID'. A Regra C44 exige modularização real por extração sem destruição de código."
+  exit 1
+fi
+echo "OK: Zero stubs vazios de remediação."
+
+echo "[5/10] Validando integridade de configurações críticas (.opencode, .json, .yaml)..."
 for f in $(git diff --cached --name-only | grep -E "(\\.opencode/.*\\.json|package\\.json|tsconfig.*\\.json|vercel\\.json)" || true); do
   if [ ! -s "$f" ] || [ $(wc -c < "$f") -lt 30 ]; then
     echo "ERRO: Arquivo de configuração crítico '$f' foi esvaziado ou truncado!"
@@ -141,23 +156,23 @@ for f in $(git diff --cached --name-only | grep -E "(\\.opencode/.*\\.json|packa
 done
 echo "OK: Configurações críticas 100% íntegras."
 
-echo "[5/9] Checando assinatura Signed-off-by na mensagem de commit..."
+echo "[6/10] Checando assinatura Signed-off-by na mensagem de commit..."
 if git log -1 --pretty=format:"%B" 2>/dev/null | grep -qi "Signed-off-by"; then
   echo "OK: Assinatura Signed-off-by detectada."
 else
   echo "AVISO: Commit staged deve incluir trailer 'Signed-off-by: Marco Antonio Conceicao <mrcoantonioconceicao@gmail.com>'."
 fi
 
-echo "[6/9] Executando Typecheck estrito..."
+echo "[7/10] Executando Typecheck estrito..."
 npm run tsc -- --noEmit
 
-echo "[7/9] Executando Suíte de Testes..."
+echo "[8/10] Executando Suíte de Testes..."
 npm test -- --run
 
-echo "[8/9] Verificando Linter e Complexidade..."
+echo "[9/10] Verificando Linter e Complexidade..."
 npm run lint
 
-echo "[9/9] Verificação de CLA e Conformidade de Governança..."
+echo "[10/10] Verificação de CLA e Conformidade de Governança..."
 echo "OK: Licença e conformidade de agente validadas."
 
 echo "=== PORTÃO LOCAL 100% VERDE - PR AUTORIZADA ==="

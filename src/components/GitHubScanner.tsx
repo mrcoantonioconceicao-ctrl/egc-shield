@@ -12,7 +12,12 @@ import {
   Lock, 
   Eye, 
   EyeOff,
-  AlertCircle
+  AlertCircle,
+  ListTodo,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Tag
 } from 'lucide-react';
 import { Finding } from '../types/egc';
 
@@ -47,6 +52,33 @@ export const GitHubScanner: React.FC<GitHubScannerProps> = ({
   const [fetchingFile, setFetchingFile] = useState(false);
   const [fetchedFileContent, setFetchedFileContent] = useState<string | null>(null);
   const [fileSha, setFileSha] = useState('');
+
+  // Estados de Auditoria Estática e Sincronização de Issues no GitHub
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
+  const [auditData, setAuditData] = useState<{
+    success: boolean;
+    totalAuditedIssues: number;
+    dispatchedCount: number;
+    autoDispatchExecuted: boolean;
+    tokenConfigured: boolean;
+    summary: string;
+    issues: Array<{
+      id: string;
+      title: string;
+      status: 'dispatched' | 'ready_for_dispatch' | 'failed' | 'error';
+      issueNumber?: number;
+      issueUrl?: string;
+      error?: string;
+      readyPayload?: {
+        id: string;
+        title: string;
+        labels: string[];
+        targetFile: string;
+        body: string;
+      };
+    }>;
+  } | null>(null);
 
   useEffect(() => {
     localStorage.setItem('egc_gh_owner', owner);
@@ -111,6 +143,37 @@ export const GitHubScanner: React.FC<GitHubScannerProps> = ({
       alert(`Erro: ${err.message}`);
     } finally {
       setIsScanningTree(false);
+    }
+  };
+
+  const handleSyncAuditIssues = async () => {
+    setIsAuditing(true);
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) headers['x-github-token'] = token;
+
+      const res = await fetch('/api/github/issues/sync-audit', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          owner: owner || 'mrcoantonioconceicao',
+          repo: repo || 'egc',
+          autoDispatch: Boolean(token),
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setAuditData(data);
+      } else {
+        alert(data.error || 'Falha ao executar auditoria e sincronização de issues.');
+      }
+    } catch (err: any) {
+      alert(`Erro na auditoria: ${err.message}`);
+    } finally {
+      setIsAuditing(false);
     }
   };
 
@@ -259,6 +322,16 @@ export const GitHubScanner: React.FC<GitHubScannerProps> = ({
               {isScanningTree ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <FolderTree className="w-3.5 h-3.5 text-cyan-400" />}
               <span>Varredura da Árvore</span>
             </button>
+
+            <button
+              onClick={handleSyncAuditIssues}
+              disabled={isAuditing}
+              className="px-3.5 py-1.5 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white font-bold rounded flex items-center gap-1.5 transition text-xs shadow-sm"
+              title="Executa análise estática segura de dívidas e envia issues estruturadas para o GitHub"
+            >
+              {isAuditing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ListTodo className="w-3.5 h-3.5 text-cyan-200" />}
+              <span>{isAuditing ? 'Auditando...' : 'Auditar & Sincronizar Issues'}</span>
+            </button>
           </div>
         </div>
 
@@ -268,6 +341,117 @@ export const GitHubScanner: React.FC<GitHubScannerProps> = ({
           </div>
         )}
       </div>
+
+      {/* 2.1 Painel de Auditoria Estática & Issues do GitHub */}
+      {auditData && (
+        <div className="bg-zinc-900 border border-cyan-800/80 rounded-lg p-4 space-y-4 animate-in fade-in duration-300 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded bg-cyan-950 border border-cyan-700 text-cyan-300">
+                <ListTodo className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="font-bold text-zinc-100 text-sm flex items-center gap-2">
+                  <span>Dívidas Arquiteturais Mapeadas & Sincronização GitHub</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
+                    {auditData.totalAuditedIssues} Dívidas
+                  </span>
+                </h4>
+                <p className="text-[11px] text-zinc-400">
+                  {auditData.summary}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <span className="text-[11px] font-mono text-zinc-400">
+                Status: {auditData.dispatchedCount > 0 ? `${auditData.dispatchedCount} publicadas` : 'Prontas para envio'}
+              </span>
+              <button
+                onClick={handleSyncAuditIssues}
+                disabled={isAuditing}
+                className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded text-[11px] flex items-center gap-1 transition"
+              >
+                <RefreshCw className={`w-3 h-3 ${isAuditing ? 'animate-spin' : ''}`} />
+                <span>Reavaliar</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {auditData.issues.map((iss) => {
+              const isExpanded = expandedIssueId === iss.id;
+              const payload = iss.readyPayload;
+
+              return (
+                <div
+                  key={iss.id}
+                  className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 space-y-2 hover:border-zinc-700 transition"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-bold text-zinc-100 text-xs">
+                          {iss.title}
+                        </span>
+                        {payload?.labels.map((lbl) => (
+                          <span
+                            key={lbl}
+                            className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-700 text-zinc-400 flex items-center gap-1"
+                          >
+                            <Tag className="w-2.5 h-2.5" />
+                            {lbl}
+                          </span>
+                        ))}
+                      </div>
+
+                      {payload?.targetFile && (
+                        <div className="text-[11px] text-zinc-400 font-mono">
+                          Arquivo Alvo: <span className="text-emerald-400">{payload.targetFile}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      {iss.status === 'dispatched' && iss.issueUrl ? (
+                        <a
+                          href={iss.issueUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 bg-emerald-950 text-emerald-300 border border-emerald-700 hover:bg-emerald-900 rounded text-[11px] font-bold flex items-center gap-1 transition"
+                        >
+                          <span>Issue #{iss.issueNumber} no GitHub</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-zinc-900 text-zinc-300 border border-zinc-700 rounded text-[10px] font-mono">
+                          Formatada & Pronta
+                        </span>
+                      )}
+
+                      <button
+                        onClick={() => setExpandedIssueId(isExpanded ? null : iss.id)}
+                        className="p-1 text-zinc-400 hover:text-zinc-200 transition"
+                        title="Ver corpo detalhado da issue"
+                      >
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded && payload && (
+                    <div className="pt-2 border-t border-zinc-800/80 space-y-2 text-xs">
+                      <div className="p-3 bg-zinc-900/90 rounded border border-zinc-800 font-mono text-[11px] text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                        {payload.body}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 2. Priority Shortcuts (C44, C30, S12) */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-3">

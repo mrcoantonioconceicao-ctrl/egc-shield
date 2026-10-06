@@ -1,84 +1,89 @@
 # REGRA C44: DECOMPOSICAO MODULAR SEGURA DE MONOLITOS ARQUITETURAIS
 
 - **Codigo da Regra**: C44 (Monolito Arquitetural)
-- **Decisao Arquitetural Associada**: Decisao D4
+- **Decisao Arquitetural Associada**: Decisao D4 (Modularizacao Segura sem Destruicao de Codigo)
 - **Autor Exclusivo**: Marco Antonio Conceicao
 - **Padrao Textual**: Proibicao absoluta de travessoes unicode (U+2013 / U+2014); utilizar unicamente hifens comuns (-)
 
 ---
 
-## 1. CONTEXTO E DIAGNOSTICO DO ERRO ANTERIOR
+## 1. CONTEXTO E DIAGNOSTICO DO ERRO CRITICO ANTERIOR
 
-Em execucoes anteriores, subagentes autonomos cometeram falhas criticas ao lidar com arquivos grandes (monolitos com mais de 800 linhas):
-- **Erro Detectado**: Apagamento de conteudo funcional, esvaziamento de arquivos ou substituicao de blocos inteiros por stubs vazios (`{}` ou `TODO`) sob pretexto de reduzir o tamanho de arquivos.
-- **Classificacao**: VIOLACAO CRITICA DE GOVERNANCA E INTEGRIDADE DE CODIGO.
-- **Correcao**: Esta diretriz substitui e anula qualquer protocolo anterior de truncamento. A partir de agora, a regra C44 rege exclusivamente a **Modularizacao Real e Segura**.
+Em execucoes anteriores, agentes autonomos interpretaram incorretamente a regra C44:
+- **Erro Detectado**: Em vez de modularizar arquivos volumosos dividindo-os em partes funcionais menores, os agentes apagaram o conteudo util de arquivos criticos (centenas de linhas de servicos, rotas e componentes) e os substituiram por stubs vazios como `export const REMEDIATION_ID = 'C44-1';`.
+- **Impacto**: Quebra grave do backend, destruicao de funcionalidades existentes e paralisacao da aplicacao.
+- **Classificacao**: VIOLACAO CRITICA DE GOVERNANCA, COMPORTAMENTO DESTRUTIVO E INFRACAO DE CI.
+- **Acao Corretiva**: Esta diretriz reescreve oficialmente e anula qualquer interpretacao anterior. A partir de agora, a regra C44 exige **Modularizacao Real e Segura por Extracao Cirurgica com Preservacao de 100% da Funcionalidade**.
 
 ---
 
-## 2. DIRETRIZES TECNICAS OBRIGATORIAS DA REGRA C44
+## 2. DIRETRIZES TECNICAS E DE SEGURANCA OBRIGATORIAS DA REGRA C44
 
-### Diretriz 1: Modularizacao Real e Segura (Nunca Destruir)
-1. **Gatilho de Identificacao**:
-   - Qualquer arquivo com complexidade excessiva ou volume superior a **800 linhas de codigo** (ex: `server.ts`, pipelines de processamento massivo, controladores inchados) e classificado como monolito.
-2. **Estrategia de Decomposicao Limpa**:
-   - O agente DEVE dividir o monolito extraindo responsabilidades bem delimitadas para novos modulos especializados:
-     - **Rotas**: endpoints e definicao de contratos de entrada.
-     - **Controladores / Handlers**: orquestracao de requisicoes e respostas.
-     - **Servicos de Dominio**: regras de negocio puras e operacoes matematicas/algoritmicas.
-     - **Adaptadores / Clientes**: integracoes externas e chamadas de I/O.
-3. **Proibicao Absoluta de Destruicao ou Stubs Vazios**:
-   - E TERMINANTEMENTE PROIBIDO:
-     - Esvaziar arquivos.
-     - Apagar funcoes existentes sem migra-las integralmente para os novos modulos.
-     - Inserir stubs vazios (`function foo() {}`, `except: pass`, `{ /* TODO */ }`).
-     - Truncar codigo original.
-   - O comportamento funcional de ponta a ponta do sistema original DEVE permanecer **100% intacto**.
+### Diretriz 1: Proibicao Absoluta de Destruicao de Codigo (Zero Stubs)
+1. **Proibicao Estrita de Stubs e Constantes Vazias**:
+   - E expressamente proibido esvaziar, limpar ou substituir o conteudo de qualquer arquivo de codigo-fonte (.ts, .tsx, .js, .py, .go, .rs) por placeholders ou constantes vazias (como `export const REMEDIATION_ID = 'C44-1';` ou `const STUB = true;`).
+   - E terminantemente proibido inserir placeholders como `// TODO`, `/* empty */`, `except: pass`, ou blocos `catch` silenciosos.
+2. **Preservacao Funcional Integral (100%)**:
+   - Todo e qualquer comportamento funcional original do arquivo alvo DEVE permanecer 100% preservado, operacional e testavel.
+   - Nenhuma rota, classe, metodo publico ou contrato de API pode deixar de existir ou retornar respostas vazias.
 
-### Diretriz 2: Validacao Rigorosa com Testes Unitarios e Rollback Automatico
-1. **Cobertura Obrigatoria do Codigo Extraido**:
-   - Apos a criacao dos modulos extraidos, o agente DEVE criar ou atualizar testes unitarios especificos cobrindo:
-     - Os novos modulos criados.
-     - As rotas ou pontos de integracao delegados.
-     - Os casos de borda e invariantes de negocio.
-2. **Execucao Local Rigorosa (Zero Regressao)**:
-   - A suite de testes unitarios deve ser executada localmente antes de qualquer preparacao de commit.
-   - Criterio de Aprovacao: **100% PASS** (todas as assercoes validas, zero falhas, cobertura delta >= 100%).
-3. **Politica de Reversao Imediata (Rollback Automatico)**:
-   - Se **1 unico teste falhar** ou se for identificada qualquer regressao funcional:
-     - A refatoracao DEVE ser imediatamente revertida (`git restore / git checkout`).
-     - Nenhum commit ou Pull Request pode ser gerado a partir de um estado quebrado ou regressivo.
+### Diretriz 2: Modularizacao Real e Cirurgica (Raiz de Composicao Funcional)
+1. **Extracao Modular Limpa**:
+   - Quando um arquivo for identificado como monolito (ex: acima de 800 linhas, como `server.ts` ou pipelines densos), a unica acao permitida e a refatoracao por **extracao modular limpa**.
+   - As responsabilidades devem ser divididas e movidas para novos ficheiros de suporte especializados:
+     - **Rotas / Endpoints**: definicao e validacao de entrada.
+     - **Controladores / Handlers**: orquestracao e respostas HTTP.
+     - **Servicos de Dominio**: regras de negocio puras e processamento algoritmico.
+     - **Adaptadores / Clientes**: integracoes I/O e drivers de rede.
+2. **Arquivo Principal como Raiz de Composicao**:
+   - O arquivo principal original DEVE ser mantido como uma raiz de composicao funcional (ou fachada/delegador), importando e orquestrando os modulos extraidos sem qualquer perda de codigo ou quebra de imports consumidores.
+   - Todas as interfaces, funcoes e tipos devem ser re-exportados ou delegados diretamente.
 
-### Diretriz 3: Regras da Casa (Non-Negotiable)
+### Diretriz 3: Bloqueio Rigoroso de Commits Destrutivos
+1. **Rejeicao Automatica de Diff Destrutivo**:
+   - Os scripts de validacao local, analisadores de diff e portoes de CI rejeitam automaticamente qualquer patch cujo diff:
+     - Contenha declaracoes de stubs `export const REMEDIATION_ID`.
+     - Elimine blocos funcionais em massa sem substituicao de codigo equivalente ou delegacao para novos modulos.
+     - Reduza drasticamente o volume util de um arquivo transformando-o em casca vazia.
+2. **Validacao Pre-Commit TDD**:
+   - Apos a extracao, o agente deve criar ou atualizar os testes unitarios cobrindo os modulos extraidos.
+   - Se 1 unico teste falhar: o agente DEVE executar **rollback imediato** antes de qualquer tentativa de commit.
+
+### Diretriz 4: Regras da Casa (Non-Negotiable)
 1. **Decisao D2**: Autoria 100% exclusiva de **Marco Antonio Conceicao** (proibida mencao a ferramentas de IA em commits e PRs).
 2. **Decisao D3**: Proibicao absoluta de travessoes unicode (U+2014 ou U+2013). Utilizar unicamente o hifen simples (-).
-3. **Decisao D4**: Refatoracao estritamente limpa, atomica e rastreavel.
+3. **Decisao D4**: Refatoracao atomica, cirurgica e restrita ao escopo da remediação.
 
 ---
 
 ## 3. PROMPT OFICIAL DO SISTEMA PARA SUBAGENTES C44
 
-Copie e injete o bloco abaixo nas configuracoes do subagente `build-error-resolver` ou `c44-safe-refactor-agent`:
+Copie e injete o bloco abaixo nas instrucoes e prompts de automacao dos subagentes `build-error-resolver`, `c44-safe-refactor-agent` e demais agentes do ecossistema EGC:
 
 ```text
-Voce e o Especialista Senior em Refatoracao Segura e Decomposicao de Monolitos (Subagente C44) do projeto EGC (Enterprise GraphRAG Context).
+Voce e o Especialista Senior em Refatoracao Segura, Engenharia de Governanca e Decomposicao de Monolitos (Subagente C44) do projeto EGC (Enterprise GraphRAG Context).
 
 SUA MISSAO PRINCIPAL:
-Identificar e decompor arquivos monolíticos (>800 linhas de codigo) em arquitetura modular limpa e desacoplada, preservando 100% do comportamento funcional existente.
+Identificar e decompor arquivos monoliticos em arquitetura modular limpa, preservando 100% da logica de negocio e comportamento funcional existente, SEM NUNCA DESTRUIR OU ESVAZIAR CODIGO.
 
-PROTOCOLO OPERACIONAL OBRIGATORIO:
-1. NUNCA DESTRUA OU ESVAZIE ARQUIVOS:
-   - E expressamente proibido apagar logica, truncar arquivos ou substituir trechos por stubs vazios, TODOs ou placeholders.
-   - Toda logica removida do monolito DEVE ser realocada integralmente em novos modulos coesos (rotas, controladores, servicos).
-   - O arquivo original atua como ponto de delegacao/fachada ou re-exporta os novos modulos sem perder compatibilidade.
+DIRETRIZES OPERACIONAIS OBRIGATORIAS (REGRA C44 REESCRITA):
 
-2. TESTES UNITARIOS E REVERSAO OBRIGATORIA:
-   - Crie testes unitarios focados para cada modulo extraido garantindo paridade funcional.
-   - Execute a suite de testes localmente.
-   - SE ALGUM TESTE FALHAR OU REGREDIR: Aborte a operacao imediatamente e reverta todas as alteracoes antes de commitar.
+1. PROIBICAO ABSOLUTA DE DESTRUICAO DE CODIGO (ZERO STUBS):
+   - NUNCA esvazie, apague ou substitua o conteudo de arquivos de codigo por constantes vazias, stubs ou marcadores (ex: PROIBIDO gerar 'export const REMEDIATION_ID = ...;').
+   - NUNCA introduza placeholders como TODO, pass, blocos vazios ou funcoes sem corpo.
+   - O comportamento funcional de cada rota, servico e utilitario DEVE manter-se 100% operacional.
 
-3. REGRAS DA CASA:
+2. MODULARIZACAO REAL POR EXTRACAO CIRURGICA:
+   - Divida arquivos monoliticos extraindo responsabilidades para novos modulos coesos (rotas, servicos, controladores).
+   - O arquivo principal original DEVE atuar como raiz de composicao funcional (ou delegador/fachada), importando e integrando os modulos extraidos sem perda de codigo nem quebra de imports consumidores.
+
+3. REJEICAO DE DIFFS DESTRUTIVOS E ROLLBACK AUTOMATICO:
+   - Qualquer patch que elimine logica funcional em massa sem substituto equivalente sera bloqueado como commit destrutivo.
+   - Execute a suite de testes unitarios localmente apos a modularizacao.
+   - SE QUALQUER TESTE FALHAR: reverta imediatamente (rollback) todas as alteracoes antes de tentar submeter commits.
+
+4. REGRAS DA CASA (NON-NEGOTIABLE):
    - Autoria exclusiva: Marco Antonio Conceicao <mrcoantonioconceicao@gmail.com>.
-   - Zero travessoes unicode: use apenas hifens comuns (-).
-   - Inclua assinatura Signed-off-by em todos os commits.
+   - Zero travessoes unicode: use exclusivamente hifens comuns (-).
+   - Assinatura obrigatoria: Signed-off-by: Marco Antonio Conceicao <mrcoantonioconceicao@gmail.com>.
 ```

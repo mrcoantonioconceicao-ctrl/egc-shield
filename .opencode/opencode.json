@@ -13,7 +13,7 @@
       "D1": "Ordem Bottom-Up Estrita (13 -> 0)",
       "D2": "Regra de Ouro da Autoria Exclusiva (100% Marco Antonio Conceicao, coautoria de IA terminantemente proibida)",
       "D3": "Proibicao Absoluta de Travessoes Unicode (U+2013 / U+2014); utilizar unicamente hifens comuns (-)",
-      "D4": "Regra C44: Decomposicao Modular Segura de Monolitos (Divisao real em submodulos limpos, proibicao absoluta de stubs vazios e testes unitarios 100% verdes com rollback imediato)",
+      "D4": "Regra C44: Decomposicao Modular Segura de Monolitos (Extracao cirurgica sem destruicao de codigo, proibicao absoluta de stubs como REMEDIATION_ID, raiz de composicao funcional e testes unitarios 100% verdes com rollback imediato)",
       "D33": "Protecao Absoluta de Arquivos de Configuracao e Assinatura Signed-off-by Obrigatoria"
     },
     "signedOffByRequired": true,
@@ -37,6 +37,10 @@
     "protectionRules": {
       "preventConfigTruncation": true,
       "preventEmptyStubs": true,
+      "preventCodeDestruction": true,
+      "preventRemediationIdStubs": true,
+      "enforceCompositionRootModularization": true,
+      "blockBulkCodeDeletionWithoutModule": true,
       "requireStrictJsonValidation": true,
       "requireMatchingTestFileInCommit": true,
       "enforceSafeMonolithModularization": true
@@ -50,23 +54,26 @@
     },
     "build-error-resolver": {
       "role": "Safe Monolith Modularization Engine (Rule C44)",
-      "protocol": "When encountering monolith files (>800 LOC), must decompose responsibilities into clean modular files (routes, controllers, services). Absolute prohibition of erasing code, emptying files, or replacing logic with empty stubs/placeholders. Functional behavior must remain 100% intact. Unit tests must be executed with 100% PASS, reverting immediately upon any failure or regression.",
+      "protocol": "When encountering monolith files (>800 LOC), must decompose responsibilities into clean modular files (routes, controllers, services). Absolute prohibition of erasing code, emptying files, or replacing logic with empty stubs/placeholders like 'export const REMEDIATION_ID'. Original file must remain as a functional composition root importing submodules with 100% functional preservation. Unit tests must be executed with 100% PASS, reverting immediately upon any failure or regression.",
       "allowConfigWipe": false,
       "allowEmptyStubs": false,
+      "allowRemediationIdStubs": false,
       "monolithThresholdLines": 800,
       "revertOnTestFailure": true
     },
     "c44-safe-refactor-agent": {
       "role": "Architectural Monolith Decomposer & Safe Refactoring Specialist",
-      "protocol": "Decomposes monolithic files into cleanly structured submodules without deleting functional logic. Executes unit tests covering extracted routines and executes immediate rollback if any test fails.",
+      "protocol": "Decomposes monolithic files into cleanly structured submodules without deleting functional logic. Re-exports or integrates submodules from the main file. Never generates REMEDIATION_ID stubs. Executes unit tests covering extracted routines and executes immediate rollback if any test fails.",
       "allowEmptyStubs": false,
+      "allowRemediationIdStubs": false,
       "requireFunctionalParity": true
     },
     "governance-guard": {
       "role": "Code Integrity & Pre-Merge Compliance Reviewer",
-      "protocol": "Blocks any PR or commit that modifies protected configuration files without explicit integrity verification.",
+      "protocol": "Blocks any PR or commit that modifies protected configuration files without explicit integrity verification, or attempts to wipe code/insert REMEDIATION_ID stubs under C44.",
       "enforceSignedOffBy": true,
-      "enforceZeroUnicodeEmDashes": true
+      "enforceZeroUnicodeEmDashes": true,
+      "blockDestructiveCommits": true
     }
   },
   "ci": {

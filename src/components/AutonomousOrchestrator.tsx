@@ -323,7 +323,7 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
           </div>
           <h3 className="font-bold text-zinc-100 text-xs mb-1">TDD & Modularização C44</h3>
           <p className="text-[11px] text-zinc-400 leading-relaxed">
-            Decomposição modular segura de monólitos (acima de 800 LOC): extração limpa para submódulos, sem stubs e com testes unitários 100% verdes.
+            Decomposição modular por extração limpa (monólitos &gt;800 LOC): preservação de 100% da funcionalidade como raiz de composição, bloqueio de stubs REMEDIATION_ID e suíte TDD 100% PASS.
           </p>
         </div>
 

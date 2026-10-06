@@ -102,13 +102,13 @@ export async function executeRemediation() {
     const text = inputText;
     const violations: string[] = [];
 
-    // 1. Regra 2 & D3: Banimento de travessões unicode (— ou –)
+    // 1. Regra 2 & D3: Banimento de travessoes unicode (U+2014 ou U+2013)
     const emDashRegex = /[\u2013\u2014]/g;
     const emDashMatches = text.match(emDashRegex);
     const emDashCount = emDashMatches ? emDashMatches.length : 0;
     const hasEmDash = emDashCount > 0;
     if (hasEmDash) {
-      violations.push(`VIOLAÇÃO REGRA 2 & D3: Encontrados ${emDashCount} travessões proibidos (— ou –). Use apenas hífen simples (-).`);
+      violations.push(`VIOLACAO REGRA 2 & D3: Encontrados ${emDashCount} travessoes proibidos (U+2014 / U+2013). Use apenas hifen simples (-).`);
     }
 
     // 2. Regra 3 & D2: Banimento de coautoria de IA
@@ -128,6 +128,9 @@ export async function executeRemediation() {
     // Verificação contra destruição de código ou inserção de stubs vazios no contexto C44
     if (/^\+.*(\/\/\s*TODO|\{\s*\}|pass\b|\/\* empty \*\/)/m.test(text)) {
       violations.push('VIOLAÇÃO REGRA C44: Detectado stub vazio ou placeholder de implementação! A regra C44 proíbe esvaziar código e exige modularização com funcionalidade intacta.');
+    }
+    if (/^\+.*export\s+const\s+REMEDIATION_ID/m.test(text) || /REMEDIATION_ID\s*=\s*['"]C44/m.test(text)) {
+      violations.push("VIOLAÇÃO CRÍTICA REGRA C44 (STUB DESTRUTIVO): Detectado 'export const REMEDIATION_ID'! É expressamente proibido substituir código funcional por stubs vazios. A regra C44 exige modularização real por extração mantendo 100% da integridade.");
     }
 
     // 4. Test presence
