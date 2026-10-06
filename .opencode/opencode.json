@@ -13,7 +13,7 @@
       "D1": "Ordem Bottom-Up Estrita (13 -> 0)",
       "D2": "Regra de Ouro da Autoria Exclusiva (100% Marco Antonio Conceicao, coautoria de IA terminantemente proibida)",
       "D3": "Proibicao Absoluta de Travessoes Unicode (U+2013 / U+2014); utilizar unicamente hifens comuns (-)",
-      "D4": "Regra C44: Refatoracao Atomica Estrita (Exatamente 1 arquivo fisico por PR em dividas pesadas)",
+      "D4": "Regra C44: Decomposicao Modular Segura de Monolitos (Divisao real em submodulos limpos, proibicao absoluta de stubs vazios e testes unitarios 100% verdes com rollback imediato)",
       "D33": "Protecao Absoluta de Arquivos de Configuracao e Assinatura Signed-off-by Obrigatoria"
     },
     "signedOffByRequired": true,
@@ -38,7 +38,8 @@
       "preventConfigTruncation": true,
       "preventEmptyStubs": true,
       "requireStrictJsonValidation": true,
-      "requireMatchingTestFileInCommit": true
+      "requireMatchingTestFileInCommit": true,
+      "enforceSafeMonolithModularization": true
     }
   },
   "agents": {
@@ -48,9 +49,18 @@
       "enforceCoverageThreshold": 91.0
     },
     "build-error-resolver": {
-      "role": "Surgical Single-File Refactoring Engine",
-      "protocol": "Must adhere strictly to Rule C44. Modifications must be confined to exactly one physical file per PR.",
-      "allowConfigWipe": false
+      "role": "Safe Monolith Modularization Engine (Rule C44)",
+      "protocol": "When encountering monolith files (>800 LOC), must decompose responsibilities into clean modular files (routes, controllers, services). Absolute prohibition of erasing code, emptying files, or replacing logic with empty stubs/placeholders. Functional behavior must remain 100% intact. Unit tests must be executed with 100% PASS, reverting immediately upon any failure or regression.",
+      "allowConfigWipe": false,
+      "allowEmptyStubs": false,
+      "monolithThresholdLines": 800,
+      "revertOnTestFailure": true
+    },
+    "c44-safe-refactor-agent": {
+      "role": "Architectural Monolith Decomposer & Safe Refactoring Specialist",
+      "protocol": "Decomposes monolithic files into cleanly structured submodules without deleting functional logic. Executes unit tests covering extracted routines and executes immediate rollback if any test fails.",
+      "allowEmptyStubs": false,
+      "requireFunctionalParity": true
     },
     "governance-guard": {
       "role": "Code Integrity & Pre-Merge Compliance Reviewer",

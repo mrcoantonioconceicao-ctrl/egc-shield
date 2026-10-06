@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { DiaryEntry, PhaseNumber } from '../types/egc';
+import { DiaryEntry, Finding, PhaseNumber } from '../types/egc';
+import { DECISIONS_LIST } from '../data/initialData';
+import { downloadAtomicAuditPdf } from '../utils/pdfAuditReport';
 import { 
   BookOpen, 
   Plus, 
@@ -10,16 +12,19 @@ import {
   Copy, 
   Check,
   Send,
-  Terminal
+  Terminal,
+  FileText
 } from 'lucide-react';
 
 interface EngineeringDiaryProps {
   diary: DiaryEntry[];
+  findings?: Finding[];
   onAddEntry: (entry: Omit<DiaryEntry, 'id' | 'timestamp'>) => void;
 }
 
 export const EngineeringDiary: React.FC<EngineeringDiaryProps> = ({
   diary,
+  findings = [],
   onAddEntry,
 }) => {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -31,6 +36,8 @@ export const EngineeringDiary: React.FC<EngineeringDiaryProps> = ({
   const [ciGateProof, setCiGateProof] = useState('');
   const [prLinkOrRef, setPrLinkOrRef] = useState('');
   const [copiedMd, setCopiedMd] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfExportSuccess, setPdfExportSuccess] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,6 +97,26 @@ ${entry.ciGateProof}
     document.body.removeChild(element);
   };
 
+  const handleExportPdf = () => {
+    try {
+      setIsExportingPdf(true);
+      downloadAtomicAuditPdf({
+        diary,
+        findings,
+        decisions: DECISIONS_LIST,
+        authorName: 'Marco Antonio Conceicao',
+        authorEmail: 'mrcoantonioconceicao@gmail.com',
+      }, 'RELATORIO_AUDITORIA_EGC_D1_D32.pdf');
+
+      setPdfExportSuccess(true);
+      setTimeout(() => setPdfExportSuccess(false), 5000);
+    } catch (err) {
+      console.error('Falha ao exportar relatório PDF de auditoria:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Banner */}
@@ -107,13 +134,22 @@ ${entry.ciGateProof}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowAddForm(!showAddForm)}
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded flex items-center gap-1.5 transition text-xs font-mono"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Novo Registro</span>
+            </button>
+            <button
+              onClick={handleExportPdf}
+              disabled={isExportingPdf}
+              className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-zinc-950 font-bold rounded flex items-center gap-1.5 transition text-xs font-mono shadow-sm active:scale-95 disabled:opacity-50"
+              title="Gerar e baixar relatório oficial PDF de auditoria com decisões D1 a D32 e achados corrigidos"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>{isExportingPdf ? 'Gerando PDF...' : 'Exportar PDF (D1-D32)'}</span>
             </button>
             <button
               onClick={copyDiaryMarkdown}
@@ -127,11 +163,27 @@ ${entry.ciGateProof}
               className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 flex items-center gap-1.5 transition text-xs font-mono"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Baixar Arquivo</span>
+              <span>Baixar MD</span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* Alerta de Feedback de Exportacao PDF */}
+      {pdfExportSuccess && (
+        <div className="p-3 rounded-lg bg-emerald-950/80 border border-emerald-600 text-emerald-300 font-mono text-xs flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>Relatório PDF de auditoria atômico gerado com sucesso! Inclui todas as Decisões D1-D32, achados corrigidos e histórico do diário de bordo.</span>
+          </div>
+          <button 
+            onClick={() => setPdfExportSuccess(false)} 
+            className="text-zinc-400 hover:text-zinc-200 text-[10px] ml-2"
+          >
+            Fechar
+          </button>
+        </div>
+      )}
 
       {/* Inline Form to Add Entry */}
       {showAddForm && (

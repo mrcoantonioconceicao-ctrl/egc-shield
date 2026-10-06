@@ -1278,7 +1278,7 @@ AssertionError: 1 failed, 7053 passed in 14.82s.`;
 
     // ETAPA 2: Isolamento e Correção Técnica (TDD & Regra C44)
     addLog(`ETAPA 2: Ativando agentes tdd-guide e build-error-resolver para remediação cirúrgica...`);
-    addLog(`Aplicando Regra C44: Modificação atômica e estrita de arquivo único em ${targetFile}.`);
+    addLog(`Aplicando Regra C44: Decomposição modular segura em ${targetFile} sem truncamento ou stubs vazios.`);
 
     const tddAgentOutput = {
       agentName: 'tdd-guide',
@@ -1304,9 +1304,9 @@ def test_pipeline_core_memory_isolation():
 
     const buildErrorResolverOutput = {
       agentName: 'build-error-resolver',
-      action: 'Refatoração cirúrgica atômica de arquivo único em conformidade com a Regra C44',
+      action: 'Decomposição modular segura em conformidade com a Regra C44 reescrita (zero stubs, preservação 100%)',
       targetFile,
-      ruleEnforced: 'C44 / Decisão D4 (Exatamente 1 arquivo alterado por PR)',
+      ruleEnforced: 'C44: Modularização Segura de Monólitos (Extração limpa sem destruição de código e validação TDD pré-commit)',
       diffSnippet: `--- a/${targetFile}
 +++ b/${targetFile}
 @@ -35,6 +35,16 @@

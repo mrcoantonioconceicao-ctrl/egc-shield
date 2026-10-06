@@ -118,12 +118,16 @@ export async function executeRemediation() {
       violations.push('VIOLAÇÃO REGRA 3 & D2: Menção ou tag de coautoria detectada! A autoria é exclusivamente humana (Marco Antônio Conceição).');
     }
 
-    // 3. Regra 5 & D4 (C44): Dívida pesada com trava de 1 arquivo por PR
+    // 3. Regra C44 & D4: Decomposição Modular Segura de Monólitos
     const fileDiffMatches = text.match(/^diff --git a\/.+ b\/.+/gm) || text.match(/^\+\+\+ b\/.+/gm) || [];
     const fileCount = fileDiffMatches.length || (text.includes('diff --git') ? 1 : 1);
     const isSingleFile = fileCount <= 1;
     if (selectedFinding?.isHeavyDebt && fileCount > 1) {
       violations.push(`VIOLAÇÃO REGRA 5 & D4 (C44): Dívida pesada alterando ${fileCount} arquivos! Regra absoluta: exatamente 1 arquivo por PR.`);
+    }
+    // Verificação contra destruição de código ou inserção de stubs vazios no contexto C44
+    if (/^\+.*(\/\/\s*TODO|\{\s*\}|pass\b|\/\* empty \*\/)/m.test(text)) {
+      violations.push('VIOLAÇÃO REGRA C44: Detectado stub vazio ou placeholder de implementação! A regra C44 proíbe esvaziar código e exige modularização com funcionalidade intacta.');
     }
 
     // 4. Test presence

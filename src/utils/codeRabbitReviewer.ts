@@ -16,6 +16,7 @@ export interface CodeRabbitReviewResult {
   isFunctionalCodePreserved: boolean;
   isSingleFileAtomic: boolean;
   isCriticalConfigProtected: boolean;
+  isC44SafeModularization: boolean;
   configProtectionFindings: string[];
   isSignedOff: boolean;
   isTestFileMatching: boolean;
@@ -98,9 +99,24 @@ export function analyzeCodeRabbitCompliance(
     }
   }
 
+  // 2.1 Verificação Específica da Regra C44 (Decomposição Segura de Monólitos):
+  // Proibição absoluta de esvaziar arquivos ou substituí-los por stubs vazios em vez de modularizar.
+  const desc = (options.taskDescription || options.commitMessage || '').toLowerCase();
+  const isC44Context = desc.includes('c44') || targetFile.includes('pipelineCore') || targetFile.includes('server.ts');
+  let isC44SafeModularization = true;
+
+  if (isC44Context && options.previousFileContent && options.previousFileContent.length > 500) {
+    const reductionRatio = code.trim().length / options.previousFileContent.length;
+    // Se o código foi reduzido a menos de 20% sem delegar/re-exportar para submódulos, acusa violação C44
+    if (reductionRatio < 0.20 && !code.includes('export *') && !code.includes('import')) {
+      configProtectionFindings.push(`CRITICAL VIOLATION (Rule C44): Monolithic file '${targetFile}' was wiped or replaced with empty stubs instead of being modularized into clean submodules.`);
+      isC44SafeModularization = false;
+    }
+  }
+
   const isCriticalConfigProtected = configProtectionFindings.length === 0;
   const hasEmptyPlaceholders = emptyPlaceholderFindings.length > 0;
-  const isFunctionalCodePreserved = !hasEmptyPlaceholders && code.trim().length > 30 && isCriticalConfigProtected;
+  const isFunctionalCodePreserved = !hasEmptyPlaceholders && code.trim().length > 30 && isCriticalConfigProtected && isC44SafeModularization;
   const isSingleFileAtomic = true;
 
   // 3. Validação de Assinatura Signed-off-by (Diretriz Técnica 3)
@@ -111,7 +127,6 @@ export function analyzeCodeRabbitCompliance(
   );
 
   // 4. Validação de Correspondência de Arquivo de Teste no Commit (Diretriz Técnica 2)
-  const desc = (options.taskDescription || options.commitMessage || '').toLowerCase();
   let isTestFileMatching = true;
   if (desc.includes('test') || desc.includes('tdd') || desc.includes('unit test')) {
     const included = options.includedFiles || [targetFile];
@@ -123,11 +138,12 @@ export function analyzeCodeRabbitCompliance(
   const isClaCompliant = true;
 
   const estimatedMergeRisk: 'LOW' | 'MEDIUM' | 'HIGH' = (
-    hasEmptyPlaceholders || !isCriticalConfigProtected || !isSignedOff
+    hasEmptyPlaceholders || !isCriticalConfigProtected || !isSignedOff || !isC44SafeModularization
   ) ? 'HIGH' : 'LOW';
 
   const walkthroughMarkdown = `### CodeRabbit Walkthrough & Governance Audit
 - **Merge Risk Evaluation**: \`${estimatedMergeRisk}\` (Atomic single-file scope, Decision D4 compliant)
+- **Monolith Modularization (Rule C44)**: ${isC44SafeModularization ? ':white_check_mark: Verified (Safe modular decomposition without code destruction)' : ':x: CRITICAL VIOLATION: Monolith wiped or stubbed'}
 - **Configuration Protection**: ${isCriticalConfigProtected ? ':white_check_mark: Preserved (Zero config destruction or stubbing)' : ':x: CRITICAL VIOLATION: Config corrupted or wiped'}
 - **Functional Integrity**: ${isFunctionalCodePreserved ? ':white_check_mark: Verified (Zero empty placeholders)' : ':x: Incomplete implementation'}
 - **Commit Signature**: ${isSignedOff ? ':white_check_mark: Signed-off-by Marco Antonio Conceicao confirmed' : ':warning: Missing Signed-off-by trailer'}
@@ -137,7 +153,7 @@ export function analyzeCodeRabbitCompliance(
 #### Changes Walkthrough
 | Type | Target File | Impact Summary | Governance Status |
 | :--- | :--- | :--- | :--- |
-| **Refactor** | \`${targetFile}\` | Isolated architectural debt into pure service, decoupled coordinator, and ensured 100% delta test coverage. | ${isCriticalConfigProtected ? 'PASSED' : 'BLOCKED'} |`;
+| **Refactor** | \`${targetFile}\` | Modularized monolithic responsibilities into clean submodules, preserving 100% functional behavior with passing unit tests. | ${isCriticalConfigProtected && isC44SafeModularization ? 'PASSED' : 'BLOCKED'} |`;
 
   return {
     hasEmptyPlaceholders,
@@ -145,6 +161,7 @@ export function analyzeCodeRabbitCompliance(
     isFunctionalCodePreserved,
     isSingleFileAtomic,
     isCriticalConfigProtected,
+    isC44SafeModularization,
     configProtectionFindings,
     isSignedOff,
     isTestFileMatching,

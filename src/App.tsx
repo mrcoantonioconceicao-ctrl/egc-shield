@@ -252,6 +252,7 @@ export default function App() {
         {activeTab === 'diary' && (
           <EngineeringDiary
             diary={diary}
+            findings={findings}
             onAddEntry={handleAddDiaryEntry}
           />
         )}

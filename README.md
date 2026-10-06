@@ -34,7 +34,7 @@ O plano opera rigorosamente de baixo para cima, garantindo estabilidade de infra
 2. Formato de Texto Estrito: Proibido o uso de travessões unicode ("—" ou "–"). Utilizar unicamente hífen simples ("-") em qualquer texto, código, commit ou PR (Decisão D3).
 3. Autoria Exclusiva: Autoria 100% de Marco Antônio Conceição em todos os artefatos.
 4. Qualidade e CI: Todo código vem acompanhado de testes unitários com 100% de cobertura no delta alterado. Respeito estrito a Clean Code, DDD, SOA e análise formal de AST.
-5. Atomicidade Cirúrgica em Dívidas Pesadas (C44): Para o achado crítico C44 e dívidas complexas, aplica-se estritamente a regra de exatamente um arquivo físico por PR, preservando o comportamento existente e deixando o validador por último (Decisão D4).
+5. Decomposição Modular Segura de Monólitos (Regra C44 / Decisão D4): Ao identificar arquivos monolíticos (>800 linhas, como server.ts), o agente DEVE dividi-los extraindo responsabilidades para novos módulos limpos (rotas, controladores, serviços). É TERMINANTEMENTE PROIBIDO esvaziar arquivos ou usar stubs vazios; o comportamento original deve permanecer 100% intacto, com validação rigorosa de testes unitários pré-commit e reversão imediata caso haja regressão.
 
 ---
 

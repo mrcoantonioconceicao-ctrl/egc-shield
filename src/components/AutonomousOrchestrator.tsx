@@ -321,9 +321,9 @@ export const AutonomousOrchestrator: React.FC<AutonomousOrchestratorProps> = ({
             </span>
             {activeStage >= 2 && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
           </div>
-          <h3 className="font-bold text-zinc-100 text-xs mb-1">TDD & Regra C44</h3>
+          <h3 className="font-bold text-zinc-100 text-xs mb-1">TDD & Modularização C44</h3>
           <p className="text-[11px] text-zinc-400 leading-relaxed">
-            Ativação de agentes tdd-guide e build-error-resolver para remediação estrita de arquivo único.
+            Decomposição modular segura de monólitos (acima de 800 LOC): extração limpa para submódulos, sem stubs e com testes unitários 100% verdes.
           </p>
         </div>
 
