@@ -11,7 +11,8 @@ import {
   Zap,
   FolderTree,
   AlertOctagon,
-  ArrowDownCircle
+  ArrowDownCircle,
+  ListTodo
 } from 'lucide-react';
 import { Finding } from '../types/egc';
 import { CiRunnerMonitor } from './CiRunnerMonitor';
@@ -58,6 +59,36 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
     phasesSummary: Record<number, number>;
     message: string;
   } | null>(null);
+
+  const [isSyncingIssues, setIsSyncingIssues] = useState(false);
+
+  const syncAuditIssues = async () => {
+    setIsSyncingIssues(true);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['x-github-token'] = token;
+
+      const res = await fetch('/api/github/issues/sync-audit', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          owner: owner || 'mrcoantonioconceicao',
+          repo: repo || 'egc',
+          autoDispatch: Boolean(token),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.summary || `Sucesso: ${data.totalAuditedIssues} issues de auditoria mapeadas.`);
+      } else {
+        alert(data.error || 'Falha ao sincronizar issues.');
+      }
+    } catch (err: any) {
+      alert(`Erro: ${err.message}`);
+    } finally {
+      setIsSyncingIssues(false);
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('egc_gh_owner', owner);
@@ -386,6 +417,16 @@ export const PermanentGitHubBar: React.FC<PermanentGitHubBarProps> = ({
           >
             {isConnecting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />}
             <span>{isConnecting ? 'Testando...' : 'Testar Conexão'}</span>
+          </button>
+
+          <button
+            onClick={syncAuditIssues}
+            disabled={isSyncingIssues}
+            className="px-3 py-2 bg-cyan-900/80 hover:bg-cyan-800 text-cyan-200 border border-cyan-700/80 rounded-lg flex items-center gap-1.5 transition text-xs font-semibold"
+            title="Mapeia melhorias e publica issues organizadas no GitHub"
+          >
+            {isSyncingIssues ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ListTodo className="w-3.5 h-3.5 text-cyan-300" />}
+            <span>{isSyncingIssues ? 'Sincronizando...' : 'Issues no GitHub'}</span>
           </button>
 
           <button
